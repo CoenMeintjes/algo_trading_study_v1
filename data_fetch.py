@@ -1,4 +1,5 @@
 import psycopg2
+import pandas as pd
 from psycopg2.extras import DictCursor
 import datetime
 from binance.um_futures import UMFutures
@@ -14,20 +15,29 @@ load_dotenv()
 
 client = UMFutures()
 
-# logger.add('logs/1_data_fetch.log', rotation= '5 MB')
+logger.add('logs/1_data_fetch.log', rotation= '5 MB')
 
 def data_fetch():
-    logger.info('Initiating data fetch')
+    today = (datetime.now()).date()
+    logger.info(f'Initiating data fetch for: {today}')
     # database connection
-    connection = psycopg2.connect(
-        host= os.getenv('DB_HOST'), 
-        database=  os.getenv('DB_NAME_FUT'),
-        port =  os.getenv('DB_PORT'), 
-        user=  os.getenv('DB_USER'), 
-        password=  os.getenv('DB_PASSWORD'),
-        options= '-c timezone=UTC'
-    )
-    cursor = connection.cursor(cursor_factory=DictCursor)
+    # connection = psycopg2.connect(
+    #     host= os.getenv('AZDB_HOST'), 
+    #     database=  os.getenv('AZDB_NAME_FUT'),
+    #     port =  os.getenv('AZDB_PORT'), 
+    #     user=  os.getenv('AZDB_USER'), 
+    #     password=  os.getenv('AZDB_PASSWORD'),
+    #     options= '-c timezone=UTC'
+    # )
+    with psycopg2.connect(
+        host=os.getenv('PG_HOST'),
+        database=os.getenv('PG_DATABASE'),
+        port=os.getenv('PG_PORT'),
+        user=os.getenv('PG_USERNAME'),
+        password=os.getenv('PG_PASSWORD'),
+        options='-c timezone=UTC'
+    ) as connection:
+        cursor = connection.cursor(cursor_factory=DictCursor)
 
     # -------------------------
     # Get a list of all symbols on Binance
@@ -40,38 +50,54 @@ def data_fetch():
     # Flags added based ont the filter above
     trading = 1
 
+    existing_symbols = pd.read_sql(sql="SELECT * FROM asset", con= connection)
+
+    commit_count = 0
     for symbol in symbols:
-        try:
-            logger.info(f'Inserting asset {symbol} into asset')
+        if symbol in existing_symbols['symbol'].values:
+            logger.info(f'Symbol exists: {symbol}')
+            continue
+        else:
+            try:
+                logger.info(f'Inserting asset {symbol} into asset')
 
-            # Finding the symbol data in the provided 'data' dictionary
-            symbol_data = next((item for item in data['symbols'] if item['symbol'] == symbol), None)
+                # Finding the symbol data in the provided 'data' dictionary
+                symbol_data = next((item for item in data['symbols'] if item['symbol'] == symbol), None)
 
-            # Extracting the lot size filter for the symbol
-            lot_size_filter = next((item for item in symbol_data['filters'] if item['filterType'] == 'LOT_SIZE'), None)    
-            symbol_lot_size = float(lot_size_filter['minQty'])
+                # Extracting the lot size filter for the symbol
+                lot_size_filter = next((item for item in symbol_data['filters'] if item['filterType'] == 'LOT_SIZE'), None)    
+                symbol_lot_size = float(lot_size_filter['minQty'])
 
-            # Extracting the min_notional filter for the symbol
-            min_notional_filter = next((item for item in symbol_data['filters'] if item['filterType'] == 'MIN_NOTIONAL'), None)
-            symbol_min_notional = float(min_notional_filter['notional'])
+                # Extracting the min_notional filter for the symbol
+                min_notional_filter = next((item for item in symbol_data['filters'] if item['filterType'] == 'MIN_NOTIONAL'), None)
+                symbol_min_notional = float(min_notional_filter['notional'])
 
-            # store in database
-            cursor = connection.cursor()
-            cursor.execute('''
-                INSERT INTO asset (symbol, min_lot_size, trading, min_notional)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (symbol) DO UPDATE
-                SET min_notional = EXCLUDED.min_notional,
-                    min_lot_size = EXCLUDED.min_lot_size;
-            ''', (symbol, symbol_lot_size, trading, symbol_min_notional))
-            connection.commit()  # Commit the transaction
+                # store in database
+                # Update statement if asset info like lot_size or notional min changes
+                # cursor.execute('''
+                #     INSERT INTO asset (symbol, min_lot_size, trading, min_notional)
+                #     VALUES (%s, %s, %s, %s)
+                #     ON CONFLICT (symbol) DO UPDATE
+                #     SET min_notional = EXCLUDED.min_notional,
+                #         min_lot_size = EXCLUDED.min_lot_size;
+                # ''', (symbol, symbol_lot_size, trading, symbol_min_notional))
+                cursor.execute('''
+                    INSERT INTO asset (symbol, min_lot_size, trading, min_notional)
+                    VALUES (%s, %s, %s, %s);
+                ''', (symbol, symbol_lot_size, trading, symbol_min_notional))
 
-        except psycopg2.errors.UniqueViolation as e:
-            connection.rollback()  # Roll back the transaction in case of a unique constraint violation
-            logger.info(f"Asset {symbol} already exists in the database. Skipping.")
+            except psycopg2.errors.UniqueViolation as e:
+                connection.rollback()  # Roll back the transaction in case of a unique constraint violation
+                logger.info(f"Asset {symbol} already exists in the database. Skipping.")
 
-        except psycopg2.Error as e:
-            logger.error(e)
+            except psycopg2.Error as e:
+                logger.error(e)
+
+            commit_count += 1
+            if commit_count == 10:
+                logger.info(f'{commit_count} assets committed')
+                connection.commit()  # Commit the transaction
+                commit_count = 0
 
     connection.commit()  # Commit the transaction
 
@@ -79,14 +105,14 @@ def data_fetch():
 
     desired_timezone = pytz.timezone('UTC')
     # Parse the start_string as a datetime object with the UTC time zone
-    start_string = '2023-11-30 00:00:00 UTC'
+    start_string = '2023-11-26 00:00:00 UTC'
     start_date_obj = datetime.datetime.strptime(start_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
 
     # Convert the adjusted start_date_obj to a Unix timestamp in milliseconds
     start_time = int(start_date_obj.timestamp() * 1000)
 
     # define request end time | ALWAYS today -1 if I want full day data
-    end_string = '2023-12-01 23:59:59 UTC'
+    end_string = '2023-11-30 23:59:59 UTC'
     end_date_obj = datetime.datetime.strptime(end_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
     # end_date_obj = end_date_obj.astimezone(desired_timezone)
     end_time = int(end_date_obj.timestamp() * 1000)
@@ -96,8 +122,8 @@ def data_fetch():
         symbol_urls[symbol] = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval={interval}&startTime={start_time}&endTime={end_time}&limit=1000"
 
     #--------------------
-    fetched_data = {}
-
+    # count 10 symbols and then commit.
+    commit_count = 0
     for symbol in symbols:
         cursor.execute("SELECT id FROM asset WHERE symbol = (%s)", (symbol,))
         rows = cursor.fetchall()
@@ -115,78 +141,78 @@ def data_fetch():
         ''', (asset_id,))
         date_range_check = cursor.fetchall()
         date_range_start = date_range_check[0][0]
-        logger.info(date_range_start)
+        logger.info(f'Date range start: {date_range_start}')
         date_range_end = date_range_check[0][1]
-        logger.info(date_range_end)
+        logger.info(f'Date range end: {date_range_end}')
 
         # if count == 0:
         if date_range_start is None or date_range_start > start_date_obj or date_range_end < end_date_obj:
-                # A record with the specified primary key exists
             try:
                 data = client.continuous_klines(pair= symbol, contractType='PERPETUAL', interval=interval, startTime=start_time, endTime= end_time, limit=1000)
-                fetched_data = {f'{symbol}': data }
+                bars_fetched = len(data)
+                logger.info(f'No. of Candles Fetched: {bars_fetched}')
 
-                # Query the database to fetch the IDs for the matching symbols
-                cursor.execute("SELECT id FROM asset WHERE symbol = (%s)", (symbol,))
-                rows = cursor.fetchall()
-                # Check if any rows were returned
 
-                # Store or update the data in the correct database
-                commit_count = 0
-                logger.info(f'Inserting asset {symbol} into asset_price')
+                data_to_insert = []
                 for row in data:
-                    # Convert the Unix timestamp to a Python datetime object
-                    # Assume row[0] and row[6] contain timestamps in milliseconds
                     open_time_sast = datetime.datetime.utcfromtimestamp(row[0] / 1000)
                     open_time = open_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
                     close_time_sast = datetime.datetime.utcfromtimestamp(row[6] / 1000)
                     close_time = close_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
-                    try:
-                        cursor.execute(f'''
-                            INSERT INTO asset_price (asset_id, open_time, open, high, low, close, volume, close_time) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        ''',
-                        (asset_id, open_time, row[1], row[2], row[3], row[4], row[5], close_time,))
-                        commit_count += 1
-                    except psycopg2.errors.UniqueViolation as e:
-                        connection.rollback()  # Roll back the transaction in case of a unique constraint violation
-                        # logger.info(f"Record {asset_id}_{open_time} already exists in the database. Skipping.")
-                    except psycopg2.Error as e:
-                        logger.error(e)
-                        break
-                    if commit_count == 200:
-                        connection.commit()  # Commit the transaction
-                        commit_count = 0
+                    data_to_insert.append((asset_id, open_time, row[1], row[2], row[3], row[4], row[5], close_time))
 
-                # Commit the changes
-                connection.commit()
-                
-                cursor.execute(f'SELECT asset_id, MIN(open_time) AS date_range_start, MAX(close_time) AS date_range_end FROM asset_price WHERE asset_id = %s GROUP BY asset_id', (asset_id,))
-                date_range = cursor.fetchone()
+                sql = '''
+                    INSERT INTO asset_price (asset_id, open_time, open, high, low, close, volume, close_time) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                '''
 
-                bars_fetched = len(data)
-                logger.info(f'No. of Candles Fetched: {bars_fetched}')
+                logger.info(f'Executing {symbol} data for ingestion into asset_price')
+                cursor.executemany(sql, data_to_insert)
+                commit_count += 1
 
-                db_opencandle = date_range[1]
-                db_closecandle = date_range[2]
+                if commit_count == 20:
+                    connection.commit()  # Commit the transaction
+                    logger.info(f'{commit_count} x symbol data committed to asset_price table')
+                    commit_count = 0  
 
-                logger.info(db_opencandle)
-                logger.info(db_closecandle)
-
-                logger.info(f"DB date range = {db_opencandle} --> {db_closecandle}")
-
+            except psycopg2.Error as e:
+                connection.rollback()
+                logger.error(f"PostgreSQL Error: {e}")
             except IndexError as e:
-                logger.error(e)
-                continue
+                logger.error(f"Index Error: {e}")
+                # Handle specific index error scenario
             except ClientError as e:
-                logger.error(f"Error fetching data for symbol {symbol}: {e}")
-                continue 
+                logger.error(f"Client Error: {e}")
+                # Handle specific client error scenario
             except TypeError as e:
-                logger.error(f"Error fetching data for symbol {symbol}: {e}")
-                continue 
+                logger.error(f"Type Error: {e}")
+                # Handle specific type error scenario
+            except Exception as e:
+                logger.error(f"Unexpected Error: {e}")
+                connection.rollback()
+
         else:
             logger.info('Record exists.')
 
-    connection.commit()  # Commit the transaction
-    logger.info('End of data_fetch')
+    # Commit any remaining data
+    if commit_count > 0:
+        try:
+            connection.commit()
+            logger.info(f'{commit_count} x symbol data committed to asset_price table')
+        except psycopg2.Error as e:
+            connection.rollback()
+            logger.error(f"Error during final commit: {e}")
+        
+    cursor.execute(f'SELECT MIN(open_time) AS date_range_start, MAX(close_time) AS date_range_end FROM asset_price')
+    date_range = cursor.fetchone()
+    db_opencandle = date_range[1]
+    db_closecandle = date_range[2]
+    logger.info(f"DB date range | {db_opencandle} --> {db_closecandle}")
+
+    # close the db connection
+    connection.close()
+
+    logger.info(f'End of data_fetch for: {today}')
+    logger.info('-' * 50)
+    logger.info('\n')
 
