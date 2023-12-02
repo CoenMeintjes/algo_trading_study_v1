@@ -3,7 +3,8 @@ CREATE TABLE asset (
     id SERIAL PRIMARY KEY,
     symbol TEXT NOT NULL UNIQUE,
     min_lot_size NUMERIC NOT NULL,
-    trading INTEGER NOT NULL
+    trading INTEGER NOT NULL,
+    min_notional NUMERIC NOT NULL
 );
 
 CREATE TABLE asset_price (
@@ -91,32 +92,6 @@ CREATE TABLE all_pairs_pnl (
     date TIMESTAMPTZ NOT NULL,
     pnl JSONB,
     PRIMARY KEY (date, pnl)
-);
-
-CREATE TABLE orders (
-    symbol TEXT NOT NULL,
-    pair TEXT NOT NULL,
-    pair_order INT NOT NULL,
-    order_id INT NOT NULL,
-    client_order_id TEXT NOT NULL,
-    transact_time TIMESTAMPTZ NOT NULL,
-    price NUMERIC,
-    orig_qty NUMERIC,
-    executed_qty NUMERIC,
-    cummulative_quote_qty NUMERIC,
-    status TEXT, 
-    time_in_force TEXT,
-    type TEXT,
-    side TEXT,
-    fills JSONB,
-    margin_buy_borrow_asset TEXT,
-    margin_buy_borrow_amount NUMERIC,
-    is_isolated TEXT,
-    self_trade_prevention_mode TEXT,
-    function TEXT,
-    spread TEXT,
-    PRIMARY KEY (order_id),
-    CONSTRAINT fk_symbol FOREIGN KEY (symbol) REFERENCES asset (symbol)
 );
 
 CREATE TABLE orders (
