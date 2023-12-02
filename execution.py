@@ -1,4 +1,4 @@
-import numpy as np
+# %%
 import pandas as pd
 from statsmodels.api import OLS
 from sqlalchemy import create_engine, text
@@ -6,12 +6,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta, datetime
 from binance.um_futures import UMFutures
 from binance.error import ClientError
-import math
-import json
 from loguru import logger
 from dotenv import load_dotenv
 import os
-from decimal import Decimal, ROUND_DOWN, ROUND_UP, ROUND_HALF_EVEN
+from decimal import Decimal, ROUND_UP, ROUND_HALF_EVEN
 
 load_dotenv()
 
@@ -54,37 +52,6 @@ def execution_model():
     engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME_FUT')}")
     logger.info('Connected to database...')
 
-    def calculate_dd(df):
-        df['cumulative_dd'] = 0.0  # Initialize the cumulative drawdown column
-        max_dd = 0.0  # Initialize the maximum drawdown
-        max_dd_duration = 0  # Initialize the duration of the maximum drawdown
-        max_pnl = 0.0  # Initialize the maximum PnL
-        for i, r in df.iterrows():
-            pnl = df['cumulative_pnl'][i]
-            if pnl > max_pnl:
-                max_pnl = pnl  # Update the maximum PnL
-            drawdown = pnl - max_pnl
-            df.at[i, 'cumulative_dd'] = drawdown
-            
-            # Check if we have a new maximum drawdown
-            if drawdown < max_dd:
-                max_dd = drawdown
-                max_dd_duration = 0
-            else:
-                max_dd_duration += 1
-            
-            # Update the duration for the current drawdown
-            df.at[i, 'max_dd_duration'] = max_dd_duration
-
-        # max_dd = drawdown.max()
-        return max_dd, df # Return a DataFrame with 'cumulative_dd' and 'max_dd_duration' columns
-
-    def calculate_rolling_mean(series, window_size):
-        return series.rolling(window=window_size).mean()
-
-    def calculate_rolling_std(series, window_size):
-        return series.rolling(window=window_size).std()
-
     logger.info('Query database for trading pairs...')
     trading_pairs_query = text('''
         SELECT 
@@ -98,9 +65,6 @@ def execution_model():
     ''')
 
     trading_pairs = pd.read_sql(trading_pairs_query, engine, params={'trainset_end': backdata_end})
-
-    # Set the format for displaying float values
-    pd.options.display.float_format = '{:,.2f}'.format
 
     # Initialize a list to store backtest statistics
     backtest_stats = []
