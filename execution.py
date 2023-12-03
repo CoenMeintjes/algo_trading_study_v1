@@ -11,14 +11,32 @@ from dotenv import load_dotenv
 import os
 from decimal import Decimal, ROUND_UP, ROUND_HALF_EVEN
 
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
 load_dotenv()
 
 logger.add('logs/3_execution.log', rotation= '5 MB')
 
-# API key/secret are required for user data endpoints
-client = UMFutures(key= os.getenv('API_KEY'), secret=os.getenv('SECRET_KEY'))
+credential = DefaultAzureCredential()
 
-def execution_model():
+load_dotenv()
+
+client = UMFutures()
+
+def get_secret(secret_name):
+    secret_client = SecretClient(vault_url="https://algo1vault.vault.azure.net/", credential=credential)
+
+    # Retrieve the secret by its name
+    secret = secret_client.get_secret(secret_name)
+
+    # Get the value of the secret
+    return secret.value
+
+# API key/secret are required for user data endpoints
+# client = UMFutures(key= os.getenv('API_KEY'), secret=os.getenv('SECRET_KEY'))
+
+def execution_model(select_database: str):
     # Get server timestamp
     logger.info('\n')
     logger.info('-' * 50)
@@ -33,7 +51,24 @@ def execution_model():
     logger.info(f'\n{account_positions}')
 
     # -------------------
-    # Data preperation
+    # Database connection
+    # -------------------
+    if select_database == 'sandbox':
+        # SANDBOX
+        engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME_FUT')}")
+        logger.info('Connected to SANDBOX database')
+    # -------------------
+    elif select_database == 'production':
+        # PRODCUTION
+        # engine = create_engine(f"postgresql://{os.getenv('PG_USERNAME')}:{os.getenv('PG_PASSWORD')}@{os.getenv('PG_HOST')}:{os.getenv('PG_PORT')}/{os.getenv('PG_DATABASE')}")
+        engine = create_engine(f"postgresql://{get_secret('pg-user')}:{get_secret('pg-password')}@{get_secret('pg-host')}:{get_secret('pg-port')}/{get_secret('pg-database')}")
+
+        logger.info('Connected to PRODUCTION database')
+    else:
+        logger.error(f'Error with database selection -> {select_database}. Can only be "sandbox" or "production"')
+
+    # -------------------
+    # Data preparation
     # -------------------
 
     # Select the month to backtest
@@ -47,10 +82,7 @@ def execution_model():
     backdata_end = pd.to_datetime(insample_start) - timedelta(days = 1)
 
     logger.info(f'Running strategy for month of {insample_start} --> {insample_end}')
-
-    # Load the coint test results as df
-    engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME_FUT')}")
-    logger.info('Connected to database...')
+    logger.info('-' * 50)
 
     logger.info('Query database for trading pairs...')
     trading_pairs_query = text('''
@@ -70,7 +102,7 @@ def execution_model():
     backtest_stats = []
 
     # Set the initial account balance
-    initial_account_balance = 500
+    initial_account_balance = 1000
     account_balance = initial_account_balance
 
     # Set position parameters
@@ -1193,4 +1225,3 @@ def execution_model():
     # # plt.plot(dd_plot['cumulative_dd'])
 
     # # plt.show()
-

@@ -1,43 +1,78 @@
+# %%
 import psycopg2
 import pandas as pd
 from psycopg2.extras import DictCursor
-import datetime
+from datetime import timedelta, datetime
 from binance.um_futures import UMFutures
 from binance.error import ClientError, ServerError
 import requests
-import datetime
 import pytz
 from loguru import logger
 from dotenv import load_dotenv
 import os
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+credential = DefaultAzureCredential()
 
 load_dotenv()
 
 client = UMFutures()
 
+def get_secret(secret_name):
+    secret_client = SecretClient(vault_url="https://algo1vault.vault.azure.net/", credential=credential)
+
+    # Retrieve the secret by its name
+    secret = secret_client.get_secret(secret_name)
+
+    # Get the value of the secret
+    return secret.value
+
 logger.add('logs/1_data_fetch.log', rotation= '5 MB')
 
-def data_fetch():
+def data_fetch(select_database: str, start: str, end: str):
     today = (datetime.now()).date()
-    logger.info(f'Initiating data fetch for: {today}')
     # database connection
-    # connection = psycopg2.connect(
-    #     host= os.getenv('AZDB_HOST'), 
-    #     database=  os.getenv('AZDB_NAME_FUT'),
-    #     port =  os.getenv('AZDB_PORT'), 
-    #     user=  os.getenv('AZDB_USER'), 
-    #     password=  os.getenv('AZDB_PASSWORD'),
-    #     options= '-c timezone=UTC'
-    # )
-    with psycopg2.connect(
-        host=os.getenv('PG_HOST'),
-        database=os.getenv('PG_DATABASE'),
-        port=os.getenv('PG_PORT'),
-        user=os.getenv('PG_USERNAME'),
-        password=os.getenv('PG_PASSWORD'),
-        options='-c timezone=UTC'
-    ) as connection:
-        cursor = connection.cursor(cursor_factory=DictCursor)
+    if select_database == 'sandbox':
+        # ----------
+        # SANDBOX
+        # -----------
+        with psycopg2.connect(
+            host=os.getenv('DB_HOST'),
+            database=os.getenv('DB_NAME_FUT'),
+            port=os.getenv('DB_PORT'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            options='-c timezone=UTC'
+        ) as connection:
+            cursor = connection.cursor(cursor_factory=DictCursor)
+
+    elif select_database == 'production':
+        # ----------
+        # PRODUCTION
+        # -----------
+        # with psycopg2.connect(
+        #     host=os.getenv('PG_HOST'),
+        #     database=os.getenv('PG_DATABASE'),
+        #     port=os.getenv('PG_PORT'),
+        #     user=os.getenv('PG_USERNAME'),
+        #     password=os.getenv('PG_PASSWORD'),
+        #     options='-c timezone=UTC'
+        # ) as connection:
+        #     cursor = connection.cursor(cursor_factory=DictCursor)
+        
+        with psycopg2.connect(
+            host=get_secret('pg-host'),
+            database=get_secret('pg-database'),
+            port=get_secret('pg-port'),
+            user=get_secret('pg-user'),
+            password=get_secret('pg-password'),
+            options='-c timezone=UTC'
+        ) as connection:
+            cursor = connection.cursor(cursor_factory=DictCursor)
+
+    else:
+        logger.error(f'Error with database selection -> {select_database}')
 
     # -------------------------
     # Get a list of all symbols on Binance
@@ -105,15 +140,15 @@ def data_fetch():
 
     desired_timezone = pytz.timezone('UTC')
     # Parse the start_string as a datetime object with the UTC time zone
-    start_string = '2023-11-26 00:00:00 UTC'
-    start_date_obj = datetime.datetime.strptime(start_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
+    start_string = f'{start} 00:00:00 UTC'
+    start_date_obj = datetime.strptime(start_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
 
     # Convert the adjusted start_date_obj to a Unix timestamp in milliseconds
     start_time = int(start_date_obj.timestamp() * 1000)
 
     # define request end time | ALWAYS today -1 if I want full day data
-    end_string = '2023-11-30 23:59:59 UTC'
-    end_date_obj = datetime.datetime.strptime(end_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
+    end_string = f'{end} 23:59:59 UTC'
+    end_date_obj = datetime.strptime(end_string, '%Y-%m-%d %H:%M:%S %Z').replace(tzinfo=desired_timezone)
     # end_date_obj = end_date_obj.astimezone(desired_timezone)
     end_time = int(end_date_obj.timestamp() * 1000)
 
@@ -155,9 +190,9 @@ def data_fetch():
 
                 data_to_insert = []
                 for row in data:
-                    open_time_sast = datetime.datetime.utcfromtimestamp(row[0] / 1000)
+                    open_time_sast = datetime.utcfromtimestamp(row[0] / 1000)
                     open_time = open_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
-                    close_time_sast = datetime.datetime.utcfromtimestamp(row[6] / 1000)
+                    close_time_sast = datetime.utcfromtimestamp(row[6] / 1000)
                     close_time = close_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
                     data_to_insert.append((asset_id, open_time, row[1], row[2], row[3], row[4], row[5], close_time))
 
@@ -205,14 +240,13 @@ def data_fetch():
         
     cursor.execute(f'SELECT MIN(open_time) AS date_range_start, MAX(close_time) AS date_range_end FROM asset_price')
     date_range = cursor.fetchone()
-    db_opencandle = date_range[1]
-    db_closecandle = date_range[2]
-    logger.info(f"DB date range | {db_opencandle} --> {db_closecandle}")
-
+    db_opencandle = date_range[0]
+    db_closecandle = date_range[1]
     # close the db connection
     connection.close()
 
+    logger.info('-' * 50)
+    logger.info(f"DB date range | {db_opencandle} --> {db_closecandle}")
     logger.info(f'End of data_fetch for: {today}')
     logger.info('-' * 50)
-    logger.info('\n')
-
+    logger.info('-' * 50)
