@@ -1,10 +1,14 @@
-# %%
+'''Currently this script will not be able to run as a function as it will take too long > 10min limit
+    Idea is to run this locally once a month and populate the azure database until I can improve the solution'''
+
+# %% 
 import pandas as pd
 from statsmodels.tsa.stattools import coint
 from statsmodels.api import OLS
 from statsmodels.tsa.stattools import adfuller
 from itertools import combinations
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler
 from loguru import logger
@@ -12,7 +16,7 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
+# %%
 logger.add('logs/2_pair_testing.log', rotation= '5 MB')
 
 # Assuming df is your DataFrame with columns 'price' and 'volume'
@@ -34,7 +38,15 @@ while current_date < end_date:
     date_ranges.append((current_date, next_month))
     current_date = next_month
 
+# --------------
+# SANDBOX DB
+# --------------
 engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME_FUT')}")
+# --------------
+# PRODUCTION DB
+# --------------
+prod_engine = create_engine(f"postgresql://{os.getenv('PG_USERNAME')}:{os.getenv('PG_PASSWORD')}@{os.getenv('PG_HOST')}:{os.getenv('PG_PORT')}/{os.getenv('PG_DATABASE')}")
+# --------------
 
 query = '''
     SELECT ap.asset_id, a.symbol, ap.open_time, ap.open, ap.high, ap.low, ap.close, ap.volume
@@ -52,7 +64,7 @@ df1 = df1.sort_values('timestamp')
 # -----
 '''TODO NEED TO ERROR HANDLE FOR A CASE WHERE THERE IS NO DATA FOR THE SELECTED DATE RANGE'''
 
-
+# %%
 for start, end in date_ranges:
     start_date = start
     end_date = end
@@ -149,71 +161,103 @@ for start, end in date_ranges:
         VALUES (:pair, :coint_t, :pvalue, :symbol_1_id, :symbol_2_id, :symbol_1, :symbol_2, :trainset_start, :trainset_end, :test_date)
     ''')
 
-    symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
-    symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
+    # symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
+    # symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
 
-    # TODO change coint_test_results_ml PK to id pairs and see if this speeds up the query. maybe put date first?
-    record_query = text('''
-                        SELECT 1 FROM coint_test_results
-                        WHERE symbol_1_id = :symbol_1_id 
-                            AND symbol_2_id = :symbol_2_id
-                            AND trainset_start = :trainset_start
-                            AND trainset_end = :trainset_end
-                    ''')
-
+    # # TODO change coint_test_results_ml PK to id pairs and see if this speeds up the query. maybe put date first?
+    # record_query = text('''
+    #                     SELECT 1 FROM coint_test_results
+    #                     WHERE symbol_1_id = :symbol_1_id 
+    #                         AND symbol_2_id = :symbol_2_id
+    #                         AND trainset_start = :trainset_start
+    #                         AND trainset_end = :trainset_end
+    #                 ''')
+    # Consolidated query to get IDs and check record existence
+    combined_query = text('''
+        SELECT a1.id AS symbol_1_id, a2.id AS symbol_2_id
+        FROM asset AS a1
+        JOIN asset AS a2 ON a1.symbol = :symbol_1 AND a2.symbol = :symbol_2
+        WHERE EXISTS (
+            SELECT 1 FROM coint_test_results
+            WHERE symbol_1_id = a1.id
+                AND symbol_2_id = a2.id
+                AND trainset_start = :trainset_start
+                AND trainset_end = :trainset_end
+        )
+    ''')
     # Loop through pairs of symbols for testing
     for symbol_1, symbol_2 in symbol_pairs:
         pair_name = f'{symbol_1}-{symbol_2}'
 
-        # Execute the queries to get symbol_1_id and symbol_2_id
+        # # Execute the queries to get symbol_1_id and symbol_2_id
+        # with engine.connect() as connection:
+        #     symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
+        #     symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
+        #     symbol_1_id = symbol_1_id_result[0]
+        #     symbol_2_id = symbol_2_id_result[0]
+        #     primary_key_result = connection.execute(record_query, {'symbol_1_id': symbol_1_id, 'symbol_2_id': symbol_2_id, 'trainset_start': trainset_start, 'trainset_end': trainset_end}).fetchone()
+        # Execute the consolidated query to get IDs and check record existence
+        commit_count = 0
         with engine.connect() as connection:
-            symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
-            symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
-            symbol_1_id = symbol_1_id_result[0]
-            symbol_2_id = symbol_2_id_result[0]
-            primary_key_result = connection.execute(record_query, {'symbol_1_id': symbol_1_id, 'symbol_2_id': symbol_2_id, 'trainset_start': trainset_start, 'trainset_end': trainset_end}).fetchone()
-
-        if primary_key_result is None:
-            logger.info(f'Cointegration testing new pair {pair_name}...')
-            # Extract the ID values from the query results
-            symbol_1_id = symbol_1_id_result[0] 
-            symbol_2_id = symbol_2_id_result[0]
-            
-            # Select rows for the two symbols
-            df_symbol_1 = training_data[training_data['symbol'] == symbol_1]
-            df_symbol_2 = training_data[training_data['symbol'] == symbol_2]
-
-            # Trim the symbol with more data to match the length of the symbol with less data
-            min_length = min(len(symbol_1), len(symbol_2))
-            df_symbol_1 = df_symbol_1.iloc[:min_length]
-            df_symbol_2 = df_symbol_2.iloc[:min_length]
-            try:
-                # Perform cointegration test for the pair of symbols using their 'close' prices
-                coint_t, pvalue, crit_value = coint(df_symbol_1['close'], df_symbol_2['close'])
-
-                data_to_insert = {
-                    'pair': pair_name,
-                    'coint_t': coint_t,
-                    'pvalue': pvalue,
-                    'symbol_1_id': symbol_1_id,
+            combined_result = connection.execute(
+                combined_query,
+                {
                     'symbol_1': symbol_1,
-                    'symbol_2_id': symbol_2_id,
                     'symbol_2': symbol_2,
                     'trainset_start': trainset_start,
-                    'trainset_end': trainset_end,
-                    'test_date': test_date,
+                    'trainset_end': trainset_end
                 }
+            ).fetchone()
 
-                # Execute the insertion query
-                with engine.connect() as connection:
+            # TODO check for record is very slow. I need to pull in the whole database and thne use pandas to filter out I think
+            if not combined_result:
+                symbol_1_id = combined_result[0]
+                symbol_2_id = combined_result[1]
+        # if primary_key_result is None:
+                logger.info(f'Cointegration testing new pair {pair_name}...')
+                # Extract the ID values from the query results
+                # symbol_1_id = symbol_1_id_result[0] 
+                # symbol_2_id = symbol_2_id_result[0]
+                
+                # Select rows for the two symbols
+                df_symbol_1 = training_data[training_data['symbol'] == symbol_1]
+                df_symbol_2 = training_data[training_data['symbol'] == symbol_2]
+
+                # Trim the symbol with more data to match the length of the symbol with less data
+                min_length = min(len(symbol_1), len(symbol_2))
+                df_symbol_1 = df_symbol_1.iloc[:min_length]
+                df_symbol_2 = df_symbol_2.iloc[:min_length]
+                try:
+                    # Perform cointegration test for the pair of symbols using their 'close' prices
+                    coint_t, pvalue, crit_value = coint(df_symbol_1['close'], df_symbol_2['close'])
+
+                    data_to_insert = {
+                        'pair': pair_name,
+                        'coint_t': coint_t,
+                        'pvalue': pvalue,
+                        'symbol_1_id': symbol_1_id,
+                        'symbol_1': symbol_1,
+                        'symbol_2_id': symbol_2_id,
+                        'symbol_2': symbol_2,
+                        'trainset_start': trainset_start,
+                        'trainset_end': trainset_end,
+                        'test_date': test_date,
+                    }
+
+                    # Execute the insertion query
                     connection.execute(insert_query, data_to_insert)
-                    connection.commit()
+                    
+                    commit_count += 1
+                    if commit_count == 10:
+                        logger.info(f'{commit_count} assets committed')
+                        connection.commit()  # Commit the transaction
+                        commit_count = 0
 
-            except Exception as e:
-                logger.error(f"Error for pair {pair_name}: {e}")
+                except Exception as e:
+                    logger.error(f"Error for pair {pair_name}: {e}")
 
-        else:
-            logger.info('Record exists. Skipping.')
+            else:
+                logger.info('Record exists. Skipping.')
       
     test_results_query = text('''
         SELECT pair, coint_test_stat, p_value, symbol_1, symbol_2, trainset_start, trainset_end, test_date
@@ -393,3 +437,49 @@ for start, end in date_ranges:
 
         else:
             logger.info('Record exists. Skipping.')
+
+
+# %%
+# ----------------------
+# Populate Azure DB
+# ----------------------
+
+# Query data from local databases
+coint_query = text('''
+    SELECT * FROM coint_test_results;
+''')
+
+adf_query = text('''
+    SELECT * FROM adf_test_results;
+''')
+
+trading_pairs_query = text('''
+    SELECT * FROM trading_pairs;
+''')
+
+# Create dfs for each table
+coint_data = pd.read_sql(con= engine, sql=coint_query)
+logger.info(f'No. of rows in coint_test_results | {len(coint_data)}')
+
+adf_data = pd.read_sql(con= engine, sql=adf_query)
+logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
+
+trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
+logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
+
+# insert data into production database table
+# Define the tables and corresponding DataFrames
+tables_dataframes = [
+    ('coint_test_results', coint_data),
+    ('adf_test_results', adf_data),
+    ('trading_pairs', trading_pairs_data)
+]
+
+for table_name, dataframe in tables_dataframes:
+    try:
+        dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
+    except SQLAlchemyError as e:
+        logger.error(f'Error inserting data into table {table_name}: {e}')
+        continue
+
+# %%
