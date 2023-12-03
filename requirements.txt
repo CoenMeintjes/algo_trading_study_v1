@@ -5,6 +5,7 @@
 azure-functions
 loguru
 psycopg2
+psycopg2-binary
 binance-futures-connector
 requests
 pytz
@@ -15,3 +16,5 @@ pandas
 statsmodels
 sqlalchemy
 scikit-learn
+azure-keyvault-secrets 
+azure-identity
