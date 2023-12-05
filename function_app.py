@@ -18,7 +18,7 @@ app = func.FunctionApp()
 @app.timer_trigger(
     schedule='0 1 0 * * *', 
     arg_name="mytimer",
-    run_on_startup=True,
+    run_on_startup=False,
     use_monitor=False
 ) 
 def algo_v1(mytimer: func.TimerRequest) -> None:
@@ -27,13 +27,8 @@ def algo_v1(mytimer: func.TimerRequest) -> None:
     try:
         connection_string = os.getenv('SQLConnectionString')
         sg_api = os.getenv('SendGridString')
-        binance_api = os.getenv('BinanceKey')
-        binance_secret = os.getenv('BinanceSecret')
-
-        logger.info(f'key: {binance_api} | secret: {binance_secret}')
-        
-        # binance_api = get_secret('binance-api-1')
-        # binance_secret = get_secret('binance-secret')  
+        binance_api = get_secret('binance-api-1')
+        binance_secret = get_secret('binance-secret')  
 
     except Exception as e:
         logger.error(f'Error fetching keys: {e}')
