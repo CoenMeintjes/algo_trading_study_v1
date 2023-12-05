@@ -8,71 +8,20 @@ from binance.error import ClientError, ServerError
 import requests
 import pytz
 from loguru import logger
-from dotenv import load_dotenv
-import os
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 
-credential = DefaultAzureCredential()
+# logger.add('logs/1_data_fetch.log', rotation= '5 MB')
 
-load_dotenv()
-
-client = UMFutures()
-
-def get_secret(secret_name):
-    secret_client = SecretClient(vault_url="https://algo1vault.vault.azure.net/", credential=credential)
-
-    # Retrieve the secret by its name
-    secret = secret_client.get_secret(secret_name)
-
-    # Get the value of the secret
-    return secret.value
-
-logger.add('logs/1_data_fetch.log', rotation= '5 MB')
-
-def data_fetch(select_database: str, start: str, end: str):
+# def data_fetch(start: str, end: str, db_user, db_password, db_host, db_port, db_name):
+def data_fetch(start: str, end: str, connection_string):
+    client = UMFutures()
     today = (datetime.now()).date()
-    # database connection
-    if select_database == 'sandbox':
-        # ----------
-        # SANDBOX
-        # -----------
-        with psycopg2.connect(
-            host=os.getenv('DB_HOST'),
-            database=os.getenv('DB_NAME_FUT'),
-            port=os.getenv('DB_PORT'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            options='-c timezone=UTC'
-        ) as connection:
+    # database connection       
+    try:
+        with psycopg2.connect(f'postgres://{connection_string}', options='-c timezone=UTC') as connection:
             cursor = connection.cursor(cursor_factory=DictCursor)
 
-    elif select_database == 'production':
-        # ----------
-        # PRODUCTION
-        # -----------
-        # with psycopg2.connect(
-        #     host=os.getenv('PG_HOST'),
-        #     database=os.getenv('PG_DATABASE'),
-        #     port=os.getenv('PG_PORT'),
-        #     user=os.getenv('PG_USERNAME'),
-        #     password=os.getenv('PG_PASSWORD'),
-        #     options='-c timezone=UTC'
-        # ) as connection:
-        #     cursor = connection.cursor(cursor_factory=DictCursor)
-        
-        with psycopg2.connect(
-            host=get_secret('pg-host'),
-            database=get_secret('pg-database'),
-            port=get_secret('pg-port'),
-            user=get_secret('pg-user'),
-            password=get_secret('pg-password'),
-            options='-c timezone=UTC'
-        ) as connection:
-            cursor = connection.cursor(cursor_factory=DictCursor)
-
-    else:
-        logger.error(f'Error with database selection -> {select_database}')
+    except Exception as e:
+        logger.error(f'Error with database connection | {e}')
 
     # -------------------------
     # Get a list of all symbols on Binance
