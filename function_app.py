@@ -1,4 +1,3 @@
-# %%
 from loguru import logger
 import azure.functions as func
 from datetime import datetime, timedelta
@@ -23,7 +22,7 @@ app = func.FunctionApp()
 ) 
 def algo_v1(mytimer: func.TimerRequest) -> None:
 
-    # create environment variables
+    ### ENVIRONMENT VARIABLES
     try:
         connection_string = os.getenv('SQLConnectionString')
         sg_api = os.getenv('SendGridString')
