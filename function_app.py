@@ -4,40 +4,83 @@ import azure.functions as func
 from datetime import datetime, timedelta
 from data_fetch import data_fetch
 from execution import execution_model
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from azure_utils import get_secret
+import os
 
-credential = DefaultAzureCredential()
-
-logger.add('logs/0_function_app.log', rotation= '5 MB')
-
-# %%
+# Instantiate the app
 app = func.FunctionApp()
 
-logger.add('logs/0_function_app.log', rotation= '5 MB')
+### DEFINE FUNCTION
+# {second} {minute} {hour} {day} {month} {day-of-week}
+# function will trigger at 1 min past midnight utc every day = '0 1 0 * * *'
+@app.timer_trigger(
+    schedule='0 1 0 * * *', 
+    arg_name="mytimer",
+    run_on_startup=True,
+    use_monitor=False
+) 
+def algo_v1(mytimer: func.TimerRequest) -> None:
 
-@app.function_name(name="mytimer")
+    # create environment variables
+    try:
+        connection_string = os.getenv('SQLConnectionString')
+        sg_api = os.getenv('SendGridString')
+        binance_api = os.getenv('BinanceKey')
+        binance_secret = os.getenv('BinanceSecret')
 
-# function will trigger at 1 min past midnight utc every day
-@app.schedule(schedule='0 1 0 * * *', arg_name="mytimer", run_on_startup=False,
-              use_monitor=False) 
+        logger.info(f'key: {binance_api} | secret: {binance_secret}')
+        
+        # binance_api = get_secret('binance-api-1')
+        # binance_secret = get_secret('binance-secret')  
 
-def test_function(mytimer: func.TimerRequest) -> None:
+    except Exception as e:
+        logger.error(f'Error fetching keys: {e}')
+
     today = (datetime.now()).date()
     yesterday = today - timedelta(days= 1)
 
-    if mytimer.past_due:
-        logger.error('The timer is past due!')
-    
-    # Run the data fetch
-    logger.info(f'Fetching data up to end of {yesterday}')
-    
-    data_fetch(select_database='production', start=yesterday, end=yesterday)
+    ### RUN DATA FETCH    
+    try: 
+        logger.info(f'Fetching data up to end of {yesterday}')
+        data_fetch(
+            start= yesterday,
+            end= yesterday,
+            connection_string= connection_string
+        )
+        logger.info(f'Data fetch successful.')
 
-    # Run the execution_model
-    logger.info(f'Running execution_model script...')
+    except Exception as e:
+        logger.error(f'Error running the data_fetch | {e}')
 
-    execution_model(select_database='production')
+    ### RUN THE EXECUTION MODEL
+    try:
+        logger.info(f'Running execution_model script...')
+        execution_model(
+            binance_api = binance_api,
+            binance_secret= binance_secret,
+            connection_string= connection_string,
+        )
+        logger.info(f'Execution model successful.')
+    except Exception as e:
+        logger.error(f'Error running the execution model | {e}')
+
+    ### SEND EMAIL NOTIFICATION 
+    logger.info(f'Sending notification')
+    message = Mail(
+        from_email='chmeintjes@gmail.com',
+        to_emails='chmeintjes@gmail.com',
+        subject='Function Run Test',
+        html_content= 'Function has successfully run.'
+    )
+    try:
+        sg = SendGridAPIClient(sg_api)
+        response = sg.send(message)
+        logger.info(f'sendgrid response status code | {response.status_code}')
+
+    except Exception as e:
+        logger.error(e)
 
     logger.info(f'Function run complete.')
 
