@@ -6,3 +6,7 @@ __queuestorage__
 local.settings.json
 test
 .venv
+db
+monthly_pair_testing.py
+not_function_app.py
+blueprint.py
