@@ -7,39 +7,15 @@ from datetime import timedelta, datetime
 from binance.um_futures import UMFutures
 from binance.error import ClientError
 from loguru import logger
-from dotenv import load_dotenv
-import os
 from decimal import Decimal, ROUND_UP, ROUND_HALF_EVEN
 
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
+# logger.add('logs/3_execution.log', rotation= '5 MB')
 
-load_dotenv()
-
-logger.add('logs/3_execution.log', rotation= '5 MB')
-
-credential = DefaultAzureCredential()
-
-load_dotenv()
-
-client = UMFutures()
-
-def get_secret(secret_name):
-    secret_client = SecretClient(vault_url="https://algo1vault.vault.azure.net/", credential=credential)
-
-    # Retrieve the secret by its name
-    secret = secret_client.get_secret(secret_name)
-
-    # Get the value of the secret
-    return secret.value
-
-# API key/secret are required for user data endpoints
-# client = UMFutures(key= os.getenv('API_KEY'), secret=os.getenv('SECRET_KEY'))
-
-def execution_model(select_database: str):
+def execution_model(binance_api: str, binance_secret: str, connection_string):
     # Get server timestamp
     logger.info('\n')
     logger.info('-' * 50)
+    client = UMFutures(key= binance_api, secret= binance_secret)
     logger.info(f'Time at runtime: {client.time()}')
 
     # Get account and balance information
@@ -50,30 +26,19 @@ def execution_model(select_database: str):
     account_positions = account_positions[['asset', 'walletBalance']]
     logger.info(f'\n{account_positions}')
 
-    # -------------------
-    # Database connection
-    # -------------------
-    if select_database == 'sandbox':
-        # SANDBOX
-        engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME_FUT')}")
-        logger.info('Connected to SANDBOX database')
-    # -------------------
-    elif select_database == 'production':
-        # PRODCUTION
-        # engine = create_engine(f"postgresql://{os.getenv('PG_USERNAME')}:{os.getenv('PG_PASSWORD')}@{os.getenv('PG_HOST')}:{os.getenv('PG_PORT')}/{os.getenv('PG_DATABASE')}")
-        engine = create_engine(f"postgresql://{get_secret('pg-user')}:{get_secret('pg-password')}@{get_secret('pg-host')}:{get_secret('pg-port')}/{get_secret('pg-database')}")
+    ### DATABASE CONNECTION
+    try:
+        engine = create_engine(f'postgresql://{connection_string}')
+        logger.info('Connected to database')
 
-        logger.info('Connected to PRODUCTION database')
-    else:
-        logger.error(f'Error with database selection -> {select_database}. Can only be "sandbox" or "production"')
-
-    # -------------------
-    # Data preparation
-    # -------------------
-
-    # Select the month to backtest
+    except Exception as e:
+        logger.error(f'Error with database connection | {e}')
+        
+    ### DATA PREPERATION
+    # Select the month start and end that the strategy is running
     insample_start = datetime(2023, 11, 26)
     insample_end = datetime(2023, 12, 25)
+
     # Get the current date without time
     today = (datetime.now()).date()
     yesterday = today - timedelta(days= 1)
@@ -242,7 +207,8 @@ def execution_model(select_database: str):
         # Calculate position change
         spread_change = (long_spread != long_spread.shift(1)).any(axis=1) | (short_spread != short_spread.shift(1)).any(axis=1)
         df['position_change'] = spread_change
-
+        
+        logger.info('execution model ran up to trade execution')
         # -------------------
         # Trade execution
         # -------------------
@@ -831,9 +797,9 @@ def execution_model(select_database: str):
             except ClientError as e:
                 logger.error(f"Error placing orders: {str(e)}")
 
-    # ---------------
-    # Short Spread
-    #----------------
+        # ---------------
+        # Short Spread
+        #----------------
         if df['in_position'].iloc[-1] == -1 and df['in_position'].iloc[-2] == 0:
         # if df['in_position'].iloc[-1] == -1: FOR TESTING out of sequence
             current_spread = 'short'
