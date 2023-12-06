@@ -335,6 +335,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                 logger.info(f'Position status = NEW')
                 # If position is Long Spread
                 if df['in_position'].iloc[-1] == 0 and df['in_position'].iloc[-2] == 1:
+                    current_spread = 'closed'
                     logger.info('Close Long Spread')
                     logger.info(f'{symbol_1} amount to sell {symbol_1_balance}')
                     logger.info(f'{symbol_2} amount to buy {symbol_2_balance}')
@@ -477,6 +478,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                 # If position is Short Spread
                 if df['in_position'].iloc[-1] == 0 and df['in_position'].iloc[-2] == -1:
                     logger.info('Close Short Spread')
+                    current_spread = 'closed'
                     logger.info(f'{symbol_1} amount to buy {symbol_1_balance}')
                     logger.info(f'{symbol_2} amount to sell {symbol_2_balance}')
 
