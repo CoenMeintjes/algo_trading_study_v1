@@ -10,7 +10,7 @@ app = func.FunctionApp()
 @app.timer_trigger(
     schedule="0 1 0 * * *", 
     arg_name="myTimer",
-    run_on_startup=True, ####### CHANGE TO FALSE FOR PRODUCTION
+    run_on_startup=False, ####### CHANGE TO FALSE FOR PRODUCTION
     use_monitor= False 
 ) 
 def timer_trigger(myTimer: func.TimerRequest) -> None:
