@@ -4,8 +4,6 @@
 
 azure-functions
 loguru
-psycopg2
-psycopg2-binary
 binance-futures-connector
 requests
 pytz
