@@ -138,7 +138,6 @@ __azurite_db*__.json
 
 adhoc
 logs
-utils.py
 
 test
 not_function_app.py
