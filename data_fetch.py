@@ -1,5 +1,4 @@
-import pandas as pd
-from datetime import timedelta, datetime
+from datetime import datetime
 from binance.um_futures import UMFutures
 from binance.error import ClientError
 import requests
