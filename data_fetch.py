@@ -3,14 +3,11 @@ from binance.um_futures import UMFutures
 from binance.error import ClientError
 import requests
 import pytz
-from loguru import logger
+import logging
 from sqlalchemy import create_engine, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from mapped_model import Asset, AssetPrice
-
-# Set up logger
-logger.add('logs/1_data_fetch.log', rotation='5 MB')
 
 def data_fetch(start: str, end: str, connection_string):
     client = UMFutures()
@@ -20,7 +17,7 @@ def data_fetch(start: str, end: str, connection_string):
     engine = create_engine(f'postgresql://{connection_string}')
     Session = sessionmaker(bind=engine)
     session = Session()
-    logger.info('Connected to database')
+    logging.info('Connected to database')
     
     try:
         # Get list of all symbols on Binance
@@ -33,11 +30,11 @@ def data_fetch(start: str, end: str, connection_string):
 
         for symbol in symbols:
             if (symbol,) in existing_symbols:
-                logger.info(f'Symbol exists: {symbol}')
+                logging.info(f'Symbol exists: {symbol}')
                 continue
             else:
                 try:
-                    logger.info(f'Inserting asset {symbol} into asset table')
+                    logging.info(f'Inserting asset {symbol} into asset table')
                     symbol_data = next((item for item in data['symbols'] if item['symbol'] == symbol), None)
                     lot_size_filter = next((item for item in symbol_data['filters'] if item['filterType'] == 'LOT_SIZE'), None)    
                     symbol_lot_size = float(lot_size_filter['minQty'])
@@ -47,10 +44,10 @@ def data_fetch(start: str, end: str, connection_string):
                     session.add(new_asset)
                 except IntegrityError:
                     session.rollback()
-                    logger.info(f"Symbol {symbol} already inserted by another process")
+                    logging.info(f"Symbol {symbol} already inserted by another process")
                 except Exception as e:
                     session.rollback()
-                    logger.error(f"Error inserting {symbol}: {e}")
+                    logging.error(f"Error inserting {symbol}: {e}")
         session.commit()
         
         interval = '1d'
@@ -68,20 +65,20 @@ def data_fetch(start: str, end: str, connection_string):
             asset = session.query(Asset).filter(Asset.symbol == symbol).first()
             if asset:
                 asset_id = asset.id
-                logger.info(f'asset_id: {asset_id}')
+                logging.info(f'asset_id: {asset_id}')
                 date_range_check = (
                     session.query(func.min(AssetPrice.open_time), func.max(AssetPrice.close_time))
                     .filter(AssetPrice.asset_id == asset_id)
                     .first()
                 )
                 date_range_start, date_range_end = date_range_check
-                logger.info(f'Date range start: {date_range_start}')
-                logger.info(f'Date range end: {date_range_end}')
+                logging.info(f'Date range start: {date_range_start}')
+                logging.info(f'Date range end: {date_range_end}')
                 if date_range_start is None or date_range_start > start_date_obj or date_range_end < end_date_obj:
                     try:
                         data = client.continuous_klines(pair=symbol, contractType='PERPETUAL', interval=interval, startTime=start_time, endTime=end_time, limit=1000)
                         bars_fetched = len(data)
-                        logger.info(f'No. of Candles Fetched: {bars_fetched}')
+                        logging.info(f'No. of Candles Fetched: {bars_fetched}')
 
                         data_to_insert = [
                             {
@@ -100,26 +97,26 @@ def data_fetch(start: str, end: str, connection_string):
                         try:
                             session.bulk_insert_mappings(AssetPrice, data_to_insert)
                             session.commit()
-                            logger.info(f'Executing {symbol} data for ingestion into asset_price')
+                            logging.info(f'Executing {symbol} data for ingestion into asset_price')
                         except IntegrityError as e:
                             session.rollback()
-                            logger.error(f'Integrity Error while inserting data: {e}')
+                            logging.error(f'Integrity Error while inserting data: {e}')
                         except Exception as e:
                             session.rollback()
-                            logger.error(f'Error while inserting data: {e}')
+                            logging.error(f'Error while inserting data: {e}')
                     except IndexError as e:
-                        logger.error(f'Index Error: {e}')
+                        logging.error(f'Index Error: {e}')
                     except ClientError as e:
-                        logger.error(f'Client Error: {e}')
+                        logging.error(f'Client Error: {e}')
                     except TypeError as e:
-                        logger.error(f'Type Error: {e}')
+                        logging.error(f'Type Error: {e}')
                     except Exception as e:
-                        logger.error(f'Unexpected Error: {e}')
+                        logging.error(f'Unexpected Error: {e}')
                         session.rollback()
                 else:
-                    logger.info('Record exists.')
+                    logging.info('Record exists.')
             else:
-                logger.info(f'No matching records found for symbol: {symbol}')
+                logging.info(f'No matching records found for symbol: {symbol}')
 
         date_range = (
             session.query(func.min(AssetPrice.open_time).label('date_range_start'), func.max(AssetPrice.close_time).label('date_range_end'))
@@ -127,14 +124,14 @@ def data_fetch(start: str, end: str, connection_string):
         )
         db_opencandle, db_closecandle = date_range.date_range_start, date_range.date_range_end
 
-        logger.info('-' * 50)
-        logger.info(f"DB date range | {db_opencandle} --> {db_closecandle}")
-        logger.info(f'End of data_fetch for: {today}')
-        logger.info('-' * 50)
-        logger.info('-' * 50)
+        logging.info('-' * 50)
+        logging.info(f"DB date range | {db_opencandle} --> {db_closecandle}")
+        logging.info(f'End of data_fetch for: {today}')
+        logging.info('-' * 50)
+        logging.info('-' * 50)
 
     except Exception as e:
-        logger.error(f'Error with database connection | {e}')
+        logging.error(f'Error with database connection | {e}')
 
     finally:
         session.close()
