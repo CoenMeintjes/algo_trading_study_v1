@@ -3,12 +3,11 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions
-loguru
 binance-futures-connector
 requests
 pytz
-loguru
 python-dotenv
+psycopg2
 numpy
 pandas
 statsmodels
