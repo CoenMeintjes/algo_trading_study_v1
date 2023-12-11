@@ -7,7 +7,7 @@ binance-futures-connector
 requests
 pytz
 python-dotenv
-psycopg2
+psycopg2-binary
 numpy
 pandas
 statsmodels
