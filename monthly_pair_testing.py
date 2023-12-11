@@ -13,7 +13,7 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler
 from loguru import logger
 from dotenv import load_dotenv
-from azure_utils import get_secret
+from utils import get_secret
 import os
 
 load_dotenv()
@@ -23,8 +23,8 @@ logger.add('logs/2_pair_testing.log', rotation= '5 MB')
 # Assuming df is your DataFrame with columns 'price' and 'volume'
 scaler = MinMaxScaler()
 
-start_date = datetime(2023, 10, 25)
-end_date = datetime(2023, 11, 25)
+start_date = datetime(2022, 12, 25)
+end_date = datetime(2023, 1, 25)
 
 date_ranges = []
 
@@ -46,7 +46,7 @@ engine = create_engine(f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS
 # --------------
 # PRODUCTION DB
 # --------------
-db_password = ''
+db_password = 'W6eg&SyLhgyfq4#WjWLD'
 db_user = 'postgres'
 db_host = 'algo-01.postgres.database.azure.com'
 db_port = '5432'
@@ -391,12 +391,12 @@ for start, end in date_ranges:
     top_pairs_query = text('''
         SELECT *
         FROM adf_test_results
-        WHERE stationary = TRUE
-        ORDER BY adf_test_stat
+        WHERE stationary = TRUE AND trainset_end = :trainset_end
+        ORDER BY adf_test_stat 
         LIMIT 25;
     ''')
 
-    top_pairs = pd.read_sql_query(top_pairs_query, engine)
+    top_pairs = pd.read_sql_query(top_pairs_query, engine, params={'trainset_end': trainset_end})
 
     symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
     symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
@@ -473,8 +473,8 @@ for start, end in date_ranges:
 # trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
 # logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
-# # insert data into production database table
-# # Define the tables and corresponding DataFrames
+# insert data into production database table
+# Define the tables and corresponding DataFrames
 # tables_dataframes = [
 #     ('coint_test_results', coint_data),
 #     ('adf_test_results', adf_data),
@@ -488,7 +488,7 @@ for start, end in date_ranges:
 #         logger.error(f'Error inserting data into table {table_name}: {e}')
 #         continue
 
-# # %%
+# %%
 # orders_query = text('''
 #     SELECT * FROM orders;
 # ''')

@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from mapped_model import Asset, AssetPrice
 
+# TODO need to fix time zones
+
 def data_fetch(start: str, end: str, connection_string):
     client = UMFutures()
     today = datetime.now().date()
@@ -135,3 +137,5 @@ def data_fetch(start: str, end: str, connection_string):
 
     finally:
         session.close()
+
+data_fetch(start='2021-11-25', end='2022-10-18', connection_string='postgres:Polit3@localhost:5433/cryptoft')

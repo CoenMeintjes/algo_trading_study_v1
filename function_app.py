@@ -4,6 +4,9 @@ import logging
 # Instantiate the app
 app = func.FunctionApp()
 
+# TODO audit the backtest and current positions as there seems to be discrepancy start with checking trading pairs
+# There is a diff in backtest trading pairs and live pairs so don't know why this is but need to address ASAP
+
 ### DEFINE FUNCTION
 # {second} {minute} {hour} {day} {month} {day-of-week}
 # function will trigger at 1 min past midnight utc every day = '0 1 0 * * *'
