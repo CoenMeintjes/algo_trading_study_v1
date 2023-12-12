@@ -6,6 +6,7 @@ app = func.FunctionApp()
 
 # TODO audit the backtest and current positions as there seems to be discrepancy start with checking trading pairs
 # There is a diff in backtest trading pairs and live pairs so don't know why this is but need to address ASAP
+# Think this is fixed but need to double check
 
 ### DEFINE FUNCTION
 # {second} {minute} {hour} {day} {month} {day-of-week}

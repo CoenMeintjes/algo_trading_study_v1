@@ -9,7 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from mapped_model import Asset, AssetPrice
 
-# TODO need to fix time zones
+# TODO need to fix time zones | when changed to sqlalchamy and used ChatGPT then fucked up time zones
+# DB dates broken from mid data_fetch on 7th Dec
 
 def data_fetch(start: str, end: str, connection_string):
     client = UMFutures()
