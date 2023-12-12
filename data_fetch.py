@@ -9,9 +9,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from mapped_model import Asset, AssetPrice
 
-# TODO need to fix time zones | when changed to sqlalchamy and used ChatGPT then fucked up time zones
-# DB dates broken from mid data_fetch on 7th Dec
-
 def data_fetch(start: str, end: str, connection_string):
     client = UMFutures()
     today = datetime.now().date()
@@ -83,20 +80,24 @@ def data_fetch(start: str, end: str, connection_string):
                         bars_fetched = len(data)
                         logging.info(f'No. of Candles Fetched: {bars_fetched}')
 
-                        data_to_insert = [
-                            {
+                        data_to_insert = []
+                        for row in data:
+                            open_time_sast = datetime.utcfromtimestamp(row[0] / 1000)
+                            open_time = open_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
+                            close_time_sast = datetime.utcfromtimestamp(row[6] / 1000)
+                            close_time = close_time_sast.replace(tzinfo=pytz.utc).astimezone(desired_timezone)
+
+                            data_to_insert.append({
                                 'asset_id': asset_id,
-                                'open_time': datetime.utcfromtimestamp(row[0] / 1000).astimezone(desired_timezone),
+                                'open_time': open_time,
                                 'open': row[1],
                                 'high': row[2],
                                 'low': row[3],
                                 'close': row[4],
                                 'volume': row[5],
-                                'close_time': datetime.utcfromtimestamp(row[6] / 1000).astimezone(desired_timezone)
-                            }
-                            for row in data
-                        ]
-
+                                'close_time': close_time
+                                })
+                            
                         try:
                             session.bulk_insert_mappings(AssetPrice, data_to_insert)
                             session.commit()
@@ -138,5 +139,3 @@ def data_fetch(start: str, end: str, connection_string):
 
     finally:
         session.close()
-
-data_fetch(start='2021-11-25', end='2022-10-18', connection_string='postgres:Polit3@localhost:5433/cryptoft')
