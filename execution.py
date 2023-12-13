@@ -342,7 +342,9 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                         # Close long spread positions
                         logging.info('Create order to close long spread')
                         order_1 = client.new_order(symbol=symbol_1, side='SELL', type='MARKET', quantity= symbol_1_balance, positionSide= 'LONG')
+                        logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
                         order_2 = client.new_order(symbol=symbol_2, side='BUY', type='MARKET', quantity= symbol_2_balance, positionSide= 'SHORT')
+                        logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
 
                         order_1_data= {
                             'order_id': order_1['orderId'],
@@ -484,7 +486,9 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                         # # Close short spread positions
                         logging.info('Create order to close Short Spread')                   
                         order_1 = client.new_order(symbol=symbol_1, side='BUY', type='MARKET', quantity= symbol_1_balance, positionSide= 'SHORT')
+                        logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
                         order_2 = client.new_order(symbol=symbol_2, side='SELL', type='MARKET', quantity= symbol_2_balance, positionSide= 'LONG')
+                        logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
 
                         order_1_data= {
                             'order_id': order_1['orderId'],
