@@ -35,7 +35,6 @@ def timer_trigger(myTimer: func.TimerRequest) -> None:
         sg_api = os.getenv('SendGridString')
         binance_api = get_secret('binance-api-1')
         binance_secret = get_secret('binance-secret')  
-
     except Exception as e:
         logging.error(f'Error fetching keys: {e}')
 
