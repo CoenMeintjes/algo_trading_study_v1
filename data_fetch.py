@@ -13,19 +13,25 @@ def data_fetch(start: str, end: str, connection_string):
     client = UMFutures()
     today = datetime.now().date()
     
-    # DATABASE CONNECTION
-    engine = create_engine(f'postgresql://{connection_string}')
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    logging.info('Connected to database')
-    
+    try:
+        # DATABASE CONNECTION
+        engine = create_engine(f'postgresql://{connection_string}')
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        logging.info(f'Connected to database | {session}')
+    except Exception as e:
+        logging.error(f'Error with database connection | {e}')
+
     try:
         # Get list of all symbols on Binance
         response = requests.get('https://fapi.binance.com/fapi/v1/exchangeInfo')
         data = response.json()
+    except Exception as e:
+        logging.error(f'Error with binance connection | {e}')
+        
+    try:
         symbols = [item['symbol'] for item in data['symbols'] if item['status'] == 'TRADING']
         trading = 1
-
         existing_symbols = session.query(Asset.symbol).all()
 
         for symbol in symbols:
@@ -135,7 +141,7 @@ def data_fetch(start: str, end: str, connection_string):
         logging.info('-' * 50)
 
     except Exception as e:
-        logging.error(f'Error with database connection | {e}')
+        logging.error(f'Error with data fetch | {e}')
 
     finally:
         session.close()
