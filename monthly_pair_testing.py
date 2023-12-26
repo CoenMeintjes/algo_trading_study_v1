@@ -23,8 +23,8 @@ logger.add('logs/2_pair_testing.log', rotation= '5 MB')
 # Assuming df is your DataFrame with columns 'price' and 'volume'
 scaler = MinMaxScaler()
 
-start_date = datetime(2022, 10, 25)
-end_date = datetime(2023, 11, 25)
+start_date = datetime(2023, 11, 25)
+end_date = datetime(2023, 12, 25)
 
 date_ranges = []
 
@@ -59,7 +59,7 @@ prod_engine = create_engine(f"postgresql://{db_user}:{db_password}@{db_host}:{db
 #     FROM asset_price AS ap
 #     INNER JOIN asset AS a
 #     ON ap.asset_id = a.id
-#     WHERE a.is_trading = 1
+#     WHERE a.trading = 1
 # '''
 # df = pd.read_sql(query, engine)
 
@@ -87,7 +87,7 @@ for start, end in date_ranges:
         FROM asset_price AS ap
         INNER JOIN asset AS a
         ON ap.asset_id = a.id
-        WHERE ap.open_time >= :dataset_start AND ap.open_time <= :dataset_end AND a.is_trading = 1
+        WHERE ap.open_time >= :dataset_start AND ap.open_time <= :dataset_end
     ''')
     df2 = pd.read_sql(query, engine, params={'dataset_start': trainset_start, 'dataset_end': trainset_end})
 
@@ -460,9 +460,9 @@ for start, end in date_ranges:
 #     SELECT * FROM adf_test_results;
 # ''')
 
-# trading_pairs_query = text('''
-#     SELECT * FROM trading_pairs;
-# ''')
+trading_pairs_query = text('''
+    SELECT * FROM trading_pairs;
+''')
 
 # # Create dfs for each table
 # coint_data = pd.read_sql(con= engine, sql=coint_query)
@@ -471,23 +471,23 @@ for start, end in date_ranges:
 # adf_data = pd.read_sql(con= engine, sql=adf_query)
 # logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
 
-# trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
-# logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
+trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
+logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
 # insert data into production database table
 # Define the tables and corresponding DataFrames
-# tables_dataframes = [
+tables_dataframes = [
 #     ('coint_test_results', coint_data),
 #     ('adf_test_results', adf_data),
-#     ('trading_pairs', trading_pairs_data)
-# ]
+    ('trading_pairs', trading_pairs_data)
+]
 
-# for table_name, dataframe in tables_dataframes:
-#     try:
-#         dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
-#     except SQLAlchemyError as e:
-#         logger.error(f'Error inserting data into table {table_name}: {e}')
-#         continue
+for table_name, dataframe in tables_dataframes:
+    try:
+        dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
+    except SQLAlchemyError as e:
+        logger.error(f'Error inserting data into table {table_name}: {e}')
+        continue
 
 # %%
 # orders_query = text('''
