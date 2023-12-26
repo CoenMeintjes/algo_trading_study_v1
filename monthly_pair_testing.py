@@ -13,7 +13,7 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler
 from loguru import logger
 from dotenv import load_dotenv
-from azure_utils import get_secret
+from utils import get_secret
 import os
 
 load_dotenv()
@@ -391,8 +391,8 @@ for start, end in date_ranges:
     top_pairs_query = text('''
         SELECT *
         FROM adf_test_results
-        WHERE stationary = TRUE
-        ORDER BY adf_test_stat
+        WHERE stationary = TRUE AND trainset_end = :trainset_end
+        ORDER BY adf_test_stat 
         LIMIT 25;
     ''')
 
@@ -459,9 +459,9 @@ for start, end in date_ranges:
 #     SELECT * FROM adf_test_results;
 # ''')
 
-# trading_pairs_query = text('''
-#     SELECT * FROM trading_pairs;
-# ''')
+trading_pairs_query = text('''
+    SELECT * FROM trading_pairs;
+''')
 
 # # Create dfs for each table
 # coint_data = pd.read_sql(con= engine, sql=coint_query)
@@ -470,23 +470,23 @@ for start, end in date_ranges:
 # adf_data = pd.read_sql(con= engine, sql=adf_query)
 # logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
 
-# trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
-# logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
+trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query)
+logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
 # # insert data into production database table
 # # Define the tables and corresponding DataFrames
-# tables_dataframes = [
-#     ('coint_test_results', coint_data),
-#     ('adf_test_results', adf_data),
-#     ('trading_pairs', trading_pairs_data)
-# ]
+tables_dataframes = [
+    # ('coint_test_results', coint_data),
+    # ('adf_test_results', adf_data),
+    ('trading_pairs', trading_pairs_data)
+]
 
-# for table_name, dataframe in tables_dataframes:
-#     try:
-#         dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
-#     except SQLAlchemyError as e:
-#         logger.error(f'Error inserting data into table {table_name}: {e}')
-#         continue
+for table_name, dataframe in tables_dataframes:
+    try:
+        dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
+    except SQLAlchemyError as e:
+        logger.error(f'Error inserting data into table {table_name}: {e}')
+        continue
 
 # # %%
 # orders_query = text('''
