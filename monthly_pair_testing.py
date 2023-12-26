@@ -54,18 +54,18 @@ db_name = 'cryptoft'
 prod_engine = create_engine(f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}")
 # --------------
 
-query = '''
-    SELECT ap.asset_id, a.symbol, ap.open_time, ap.open, ap.high, ap.low, ap.close, ap.volume
-    FROM asset_price AS ap
-    INNER JOIN asset AS a
-    ON ap.asset_id = a.id
-'''
-df = pd.read_sql(query, engine)
+# query = '''
+#     SELECT ap.asset_id, a.symbol, ap.open_time, ap.open, ap.high, ap.low, ap.close, ap.volume
+#     FROM asset_price AS ap
+#     INNER JOIN asset AS a
+#     ON ap.asset_id = a.id
+# '''
+# df = pd.read_sql(query, engine)
 
-df1 = df.copy()
-df1.rename(columns={'open_time': 'timestamp'}, inplace=True)
-df1.columns = ['asset_id', 'symbol', 'timestamp', 'open', 'high', 'low', 'close', 'volume']
-df1 = df1.sort_values('timestamp')
+# df1 = df.copy()
+# df1.rename(columns={'open_time': 'timestamp'}, inplace=True)
+# df1.columns = ['asset_id', 'symbol', 'timestamp', 'open', 'high', 'low', 'close', 'volume']
+# df1 = df1.sort_values('timestamp')
 
 # -----
 '''TODO NEED TO ERROR HANDLE FOR A CASE WHERE THERE IS NO DATA FOR THE SELECTED DATE RANGE'''
