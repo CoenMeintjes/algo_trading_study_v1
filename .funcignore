@@ -12,3 +12,5 @@ __azurite_db*__.json
 .env
 local.settings.json
 monthly_pair_testing.py
+runbook_firewall.txt
+local_data_fetch.py
