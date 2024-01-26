@@ -65,7 +65,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     backtest_stats = []
 
     # Set the initial account balance
-    initial_account_balance = 1000
+    initial_account_balance = 2000
     account_balance = initial_account_balance
 
     # Set position parameters
