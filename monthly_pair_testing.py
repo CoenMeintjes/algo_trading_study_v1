@@ -1,5 +1,9 @@
 '''Currently this script will not be able to run as a function as it will take too long > 10min limit
-    Idea is to run this locally once a month and populate the azure database until I can improve the solution'''
+    Idea is to run this locally once a month and populate the azure database until I can improve the solution
+    
+TODO something fucked out when I run this directly on the cloud DB I think because the sequence of the local and cloud databases are different so wiped the cloud and updated
+from local'''
+
 
 # %% 
 import pandas as pd
@@ -434,6 +438,15 @@ for start, end in date_ranges:
 #     SELECT * FROM adf_test_results;
 # ''')
 
+asset_query = text('''
+    SELECT * FROM asset;
+''')
+
+asset_price_query = text('''
+    SELECT * FROM asset_price
+    WHERE open_time > '2023-12-1';
+''')
+
 trading_pairs_query = text('''
     SELECT * FROM trading_pairs
     WHERE trainset_end = :trainset_end;
@@ -446,6 +459,12 @@ trading_pairs_query = text('''
 # adf_data = pd.read_sql(con= engine, sql=adf_query)
 # logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
 
+asset_data = pd.read_sql(con= engine, sql=asset_query)
+logger.info(f'No. of rows in asset | {len(asset_data)}')
+
+asset_price_data = pd.read_sql(con= engine, sql=asset_price_query)
+logger.info(f'No. of rows in asset_price | {len(asset_price_data)}')
+
 trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query, params={'trainset_end': end_date})
 logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
@@ -454,6 +473,8 @@ logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 tables_dataframes = [
     # ('coint_test_results', coint_data),
     # ('adf_test_results', adf_data),
+    ('asset', asset_data),
+    ('asset_price', asset_price_data),
     ('trading_pairs', trading_pairs_data)
 ]
 
