@@ -144,3 +144,5 @@ not_function_app.py
 
 runbook_firewall.txt
 local_data_fetch.py
+
+monthly_pair_test_cloud.py
