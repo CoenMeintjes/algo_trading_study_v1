@@ -23,8 +23,8 @@ logger.add('logs/2_pair_testing.log', rotation= '5 MB')
 # Assuming df is your DataFrame with columns 'price' and 'volume'
 scaler = MinMaxScaler()
 
-start_date = datetime(2023, 11, 25)
-end_date = datetime(2023, 12, 25)
+start_date = datetime(2023, 12, 25)
+end_date = datetime(2024, 1, 25)
 
 date_ranges = []
 
@@ -109,7 +109,7 @@ for start, end in date_ranges:
 
     # Create a value traded column in the df
     df4.loc[:, 'value_traded'] = df4['close'] * df4['volume']
-    
+
     # Normalise the norm_value_traded column for better comparison
     df4.loc[:, 'norm_value_traded'] = scaler.fit_transform(df4['value_traded'].values.reshape(-1, 1))
 
@@ -425,7 +425,7 @@ for start, end in date_ranges:
 # Populate Azure DB
 # ----------------------
 
-# # Query data from local databases
+# Query data from local databases
 # coint_query = text('''
 #     SELECT * FROM coint_test_results;
 # ''')
@@ -449,8 +449,8 @@ trading_pairs_query = text('''
 trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query, params={'trainset_end': end_date})
 logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
-# # insert data into production database table
-# # Define the tables and corresponding DataFrames
+# insert data into production database table
+# Define the tables and corresponding DataFrames
 tables_dataframes = [
     # ('coint_test_results', coint_data),
     # ('adf_test_results', adf_data),
