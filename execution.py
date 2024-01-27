@@ -34,8 +34,8 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         
     ### DATA PREPERATION
     # Select the month start and end that the strategy is running
-    insample_start = datetime(2023, 12, 26)
-    insample_end = datetime(2024, 1, 25)
+    insample_start = datetime(2024, 1, 26)
+    insample_end = datetime(2024, 2, 25)
 
     # Get the current date without time
     today = (datetime.now()).date()
