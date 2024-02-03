@@ -9,6 +9,10 @@ db
 logs
 test
 __azurite_db*__.json
+__azurite_db*__.json~
 .env
 local.settings.json
 monthly_pair_testing.py
+runbook_firewall.txt
+local_data_fetch.py
+monthly_pair_test_cloud.py

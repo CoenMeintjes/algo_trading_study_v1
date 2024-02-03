@@ -1,9 +1,5 @@
 '''Currently this script will not be able to run as a function as it will take too long > 10min limit
-    Idea is to run this locally once a month and populate the azure database until I can improve the solution
-    
-TODO something fucked out when I run this directly on the cloud DB I think because the sequence of the local and cloud databases are different so wiped the cloud and updated
-from local'''
-
+    Idea is to run this locally once a month and populate the azure database until I can improve the solution'''
 
 # %% 
 import pandas as pd
@@ -92,7 +88,7 @@ for start, end in date_ranges:
         ON ap.asset_id = a.id
         WHERE ap.open_time >= :dataset_start AND ap.open_time <= :dataset_end AND a.trading = 1
     ''')
-    df2 = pd.read_sql(query, engine, params={'dataset_start': trainset_start, 'dataset_end': trainset_end})
+    df2 = pd.read_sql(query, prod_engine, params={'dataset_start': trainset_start, 'dataset_end': trainset_end})
 
     # structure the df to be used 
     df3 = df2.copy()
@@ -148,7 +144,7 @@ for start, end in date_ranges:
                 AND trainset_end = :trainset_end
     ''')
 
-    existing_results = pd.read_sql(query_2, engine, params={'trainset_start': trainset_start, 'trainset_end': trainset_end})
+    existing_results = pd.read_sql(query_2, prod_engine, params={'trainset_start': trainset_start, 'trainset_end': trainset_end})
 
     if existing_results.empty:
         logger.info('No test results yet.')
@@ -188,7 +184,7 @@ for start, end in date_ranges:
         pair_name = f'{symbol_1}-{symbol_2}'
 
         # Execute the queries to get symbol_1_id and symbol_2_id
-        with engine.connect() as connection:
+        with prod_engine.connect() as connection:
             symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
             symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
             symbol_1_id = symbol_1_id_result[0]
@@ -234,7 +230,7 @@ for start, end in date_ranges:
                     commit_count = 0
                 
                 # Execute the insertion query    
-                with engine.connect() as connection:
+                with prod_engine.connect() as connection:
                     connection.execute(insert_query, data_to_insert)
                     connection.commit()
 
@@ -251,7 +247,7 @@ for start, end in date_ranges:
         ORDER BY p_value ASC;
     ''')
 
-    best_results = pd.read_sql(test_results_query, engine, params={'trainset_start': trainset_start})
+    best_results = pd.read_sql(test_results_query, prod_engine, params={'trainset_start': trainset_start})
 
     viable_symbols = pd.concat([best_results['symbol_1'], best_results['symbol_2']]).unique()
 
@@ -287,7 +283,7 @@ for start, end in date_ranges:
         pair_name = f'{symbol_1}-{symbol_2}'
 
         # Execute the queries to get symbol_1_id and symbol_2_id
-        with engine.connect() as connection:
+        with prod_engine.connect() as connection:
             symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
             symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
             symbol_1_id = symbol_1_id_result[0]
@@ -323,7 +319,7 @@ for start, end in date_ranges:
                         ap_symbol_1.open_time;
                 ''')
 
-                pair_data = pd.read_sql_query(pair_data_query, engine, params={'symbol_1': symbol_1, 'symbol_2': symbol_2, 'trainset_start': trainset_start, 'trainset_end': trainset_end})
+                pair_data = pd.read_sql_query(pair_data_query, prod_engine, params={'symbol_1': symbol_1, 'symbol_2': symbol_2, 'trainset_start': trainset_start, 'trainset_end': trainset_end})
 
                 # Perform cointegration and calculate the spread as you've done
                 model = OLS(pair_data[f'close_{(symbol_1).lower()}'], pair_data[f'close_{(symbol_2).lower()}'])
@@ -354,7 +350,7 @@ for start, end in date_ranges:
                 }
 
                 # Execute the insertion query
-                with engine.connect() as connection:
+                with prod_engine.connect() as connection:
                     connection.execute(adf_insert_query, data_to_insert)
                     connection.commit()
             
@@ -375,7 +371,7 @@ for start, end in date_ranges:
         LIMIT 25;
     ''')
 
-    top_pairs = pd.read_sql_query(top_pairs_query, engine, params={'trainset_end': trainset_end})
+    top_pairs = pd.read_sql_query(top_pairs_query, prod_engine, params={'trainset_end': trainset_end})
 
     symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
     symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
@@ -393,7 +389,7 @@ for start, end in date_ranges:
                                 AND trainset_end = :trainset_end
                         ''')
 
-        with engine.connect() as connection:
+        with prod_engine.connect() as connection:
             symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
             symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
             symbol_1_id = symbol_1_id_result[0] 
@@ -416,94 +412,9 @@ for start, end in date_ranges:
                 'test_date': test_date
             }
 
-            with engine.connect() as connection:
+            with prod_engine.connect() as connection:
                 connection.execute(insert_statement, data_to_insert)
                 connection.commit()
 
         else:
             logger.info('Record exists. Skipping.')
-
-
-# %%
-# ----------------------
-# Populate Azure DB
-# ----------------------
-
-# Query data from local databases
-# coint_query = text('''
-#     SELECT * FROM coint_test_results;
-# ''')
-
-# adf_query = text('''
-#     SELECT * FROM adf_test_results;
-# ''')
-
-asset_query = text('''
-    SELECT * FROM asset;
-''')
-
-asset_price_query = text('''
-    SELECT * FROM asset_price
-    WHERE open_time > '2023-12-1';
-''')
-
-trading_pairs_query = text('''
-    SELECT * FROM trading_pairs
-    WHERE trainset_end = :trainset_end;
-''')
-
-# # Create dfs for each table
-# coint_data = pd.read_sql(con= engine, sql=coint_query)
-# logger.info(f'No. of rows in coint_test_results | {len(coint_data)}')
-
-# adf_data = pd.read_sql(con= engine, sql=adf_query)
-# logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
-
-asset_data = pd.read_sql(con= engine, sql=asset_query)
-logger.info(f'No. of rows in asset | {len(asset_data)}')
-
-asset_price_data = pd.read_sql(con= engine, sql=asset_price_query)
-logger.info(f'No. of rows in asset_price | {len(asset_price_data)}')
-
-trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query, params={'trainset_end': end_date})
-logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
-
-# insert data into production database table
-# Define the tables and corresponding DataFrames
-tables_dataframes = [
-    # ('coint_test_results', coint_data),
-    # ('adf_test_results', adf_data),
-    ('asset', asset_data),
-    ('asset_price', asset_price_data),
-    ('trading_pairs', trading_pairs_data)
-]
-
-for table_name, dataframe in tables_dataframes:
-    try:
-        dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
-    except SQLAlchemyError as e:
-        logger.error(f'Error inserting data into table {table_name}: {e}')
-        continue
-
-# # %%
-# orders_query = text('''
-#     SELECT * FROM orders;
-# ''')
-
-# # Create dfs for each table
-# order_data = pd.read_sql(con= engine, sql=orders_query)
-# logger.info(f'No. of rows in orders | {len(order_data)}')
-
-# # insert data into production database table
-# # Define the tables and corresponding DataFrames
-# tables_dataframes = [
-#     ('orders', order_data)
-# ]
-
-# for table_name, dataframe in tables_dataframes:
-#     try:
-#         dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
-#     except SQLAlchemyError as e:
-#         logger.error(f'Error inserting data into table {table_name}: {e}')
-#         continue
-# %%

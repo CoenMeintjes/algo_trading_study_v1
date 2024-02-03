@@ -6,17 +6,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta, datetime
 from binance.um_futures import UMFutures
 from binance.error import ClientError
-from loguru import logger
 from decimal import Decimal, ROUND_UP, ROUND_HALF_EVEN
-
-# logger.add('logs/3_execution.log', rotation= '5 MB')
+import logging
 
 def execution_model(binance_api: str, binance_secret: str, connection_string):
     # Get server timestamp
-    logger.info('\n')
-    logger.info('-' * 50)
+    logging.info('\n')
+    logging.info('-' * 50)
     client = UMFutures(key= binance_api, secret= binance_secret)
-    logger.info(f'Time at runtime: {client.time()}')
+    logging.info(f'Time at runtime: {client.time()}')
 
     # Get account and balance information
     account = client.account()
@@ -24,20 +22,21 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     positions = [asset for asset in account if float(asset['walletBalance']) > 0]
     account_positions = pd.DataFrame(positions)
     account_positions = account_positions[['asset', 'walletBalance']]
-    logger.info(f'\n{account_positions}')
+    logging.info(f'\n{account_positions}')
 
     ### DATABASE CONNECTION
     try:
         engine = create_engine(f'postgresql://{connection_string}')
-        logger.info('Connected to database')
+        logging.info('Connected to database')
 
     except Exception as e:
-        logger.error(f'Error with database connection | {e}')
+        logging.error(f'Error with database connection | {e}')
         
     ### DATA PREPERATION
     # Select the month start and end that the strategy is running
-    insample_start = datetime(2023, 11, 26)
-    insample_end = datetime(2023, 12, 25)
+    # TODO can edit this to use client time to establish month and then update these dynamically
+    insample_start = datetime(2024, 1, 26)
+    insample_end = datetime(2024, 2, 25)
 
     # Get the current date without time
     today = (datetime.now()).date()
@@ -46,10 +45,10 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     backdata_start = pd.to_datetime(insample_start) - timedelta(days = 21)
     backdata_end = pd.to_datetime(insample_start) - timedelta(days = 1)
 
-    logger.info(f'Running strategy for month of {insample_start} --> {insample_end}')
-    logger.info('-' * 50)
+    logging.info(f'Running strategy for month of {insample_start} --> {insample_end}')
+    logging.info('-' * 50)
 
-    logger.info('Query database for trading pairs...')
+    logging.info('Query database for trading pairs...')
     trading_pairs_query = text('''
         SELECT 
             asset1.symbol AS symbol_1,
@@ -67,7 +66,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     backtest_stats = []
 
     # Set the initial account balance
-    initial_account_balance = 1000
+    initial_account_balance = 2000
     account_balance = initial_account_balance
 
     # Set position parameters
@@ -88,14 +87,14 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     # Define the rolling window period
     rolling_window_size = 20
 
-    # Iterate through each pair in the 'backtest_pairs' DataFrame
+    # Iterate through each pair in the 'trading_pairs' DataFrame
     for index, row in trading_pairs.iterrows():
         # Extract symbols for the pair
         pair_1 = row['symbol_1']
         pair_2 = row['symbol_2']
-        logger.info('\n')
-        logger.info(f'Now processing {pair_1}-{pair_2}')
-        logger.info('-' * 40)
+        logging.info('\n')
+        logging.info(f'Now processing {pair_1}-{pair_2}')
+        logging.info('-' * 40)
 
         symbol_1 = pair_1
         symbol_2 = pair_2
@@ -103,12 +102,12 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
         symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
 
-        with engine.connect() as connection:
-            symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
-            symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
+        # with engine.connect() as connection:
+        #     symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
+        #     symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
 
-        symbol_1_id = symbol_1_id_result[0] 
-        symbol_2_id = symbol_2_id_result[0]
+        # symbol_1_id = symbol_1_id_result[0] 
+        # symbol_2_id = symbol_2_id_result[0]
 
         pair_data_query = text(f'''
             SELECT
@@ -208,7 +207,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         spread_change = (long_spread != long_spread.shift(1)).any(axis=1) | (short_spread != short_spread.shift(1)).any(axis=1)
         df['position_change'] = spread_change
         
-        logger.info('execution model ran up to trade execution')
+        logging.info('execution model ran up to trade execution')
         # -------------------
         # Trade execution
         # -------------------
@@ -216,8 +215,8 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         to be handled by getting the symbol price and then converting to USD
         '''
         # set parameters
-        total_allocation = position_size
-        symbol_allocation = total_allocation / 2
+        # total_allocation = position_size
+        symbol_allocation = position_size / 2
         symbol_alloction_threshold = symbol_allocation * 1.15 # set to 15% based on log check that max excess above allocations was around 11.10
         symbol_alloction_threshold = Decimal(symbol_alloction_threshold).quantize(Decimal('0.00'), rounding=ROUND_HALF_EVEN)
 
@@ -299,19 +298,19 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         symbol_1_order_value = Decimal(symbol_1_order_value)
         symbol_2_order_value = Decimal(symbol_2_order_value)
 
-        logger.info(f'{symbol_1} POS size: {symbol_1_target_quantity} | POS value: {symbol_1_order_value}')
-        logger.info(f'{symbol_2} POS size: {symbol_2_target_quantity} | POS value: {symbol_2_order_value}')
+        logging.info(f'{symbol_1} POS size: {symbol_1_target_quantity} | POS value: {symbol_1_order_value}')
+        logging.info(f'{symbol_2} POS size: {symbol_2_target_quantity} | POS value: {symbol_2_order_value}')
         
         if (symbol_1_order_value > symbol_alloction_threshold) or (symbol_2_order_value > symbol_alloction_threshold):
-            logger.error(f'A Position Value Exceeds Allocation Threshold.')
+            logging.error(f'A Position Value Exceeds Allocation Threshold.')
             continue
         if (symbol_1_order_value < symbol_1_min_notional) or (symbol_2_order_value < symbol_2_min_notional):
-            logger.error(f'A Position does not meet MIN_NOTIONAL value.')
+            logging.error(f'A Position does not meet MIN_NOTIONAL value.')
             continue
 
-        logger.info(f'\n{positions}')
+        logging.info(f'\n{positions}')
         if not positions.empty:
-            logger.info(f'Pair Positions = TRUE | Initiate Position Management Loop')
+            logging.info(f'Pair Positions = TRUE | Initiate Position Management Loop')
             if positions['status'].iloc[-1] == 'NEW' and positions['spread'].iloc[-1] == 'short':
                 symbol_1_balance = positions[positions['symbol'] == symbol_1]['orig_qty'].iloc[-1]
                 symbol_2_balance = positions[positions['symbol'] == symbol_2]['orig_qty'].iloc[-1]
@@ -325,26 +324,28 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                 symbol_1_balance = 0 
                 symbol_2_balance = 0
             
-            logger.info(f'symbol_1 balance: {symbol_1_balance}, symbol_2 balance: {symbol_2_balance}')
+            logging.info(f'symbol_1 balance: {symbol_1_balance}, symbol_2 balance: {symbol_2_balance}')
 
             # --------------------
             # Position Management
             # --------------------
             # Check if positions need to be closed
             if positions['status'].iloc[-1] == 'NEW':
-                logger.info(f'Position status = NEW')
+                logging.info(f'Position status = NEW')
                 # If position is Long Spread
                 if df['in_position'].iloc[-1] == 0 and df['in_position'].iloc[-2] == 1:
                     current_spread = 'closed'
-                    logger.info('Close Long Spread')
-                    logger.info(f'{symbol_1} amount to sell {symbol_1_balance}')
-                    logger.info(f'{symbol_2} amount to buy {symbol_2_balance}')
+                    logging.info('Close Long Spread')
+                    logging.info(f'{symbol_1} amount to sell {symbol_1_balance}')
+                    logging.info(f'{symbol_2} amount to buy {symbol_2_balance}')
 
                     try:
                         # Close long spread positions
-                        logger.info('Create order to close long spread')
+                        logging.info('Create order to close long spread')
                         order_1 = client.new_order(symbol=symbol_1, side='SELL', type='MARKET', quantity= symbol_1_balance, positionSide= 'LONG')
+                        logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
                         order_2 = client.new_order(symbol=symbol_2, side='BUY', type='MARKET', quantity= symbol_2_balance, positionSide= 'SHORT')
+                        logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
 
                         order_1_data= {
                             'order_id': order_1['orderId'],
@@ -472,21 +473,23 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                             connection.commit()
 
                     except ClientError as e:
-                        logger.error(f"Error placing orders: {str(e)}")
+                        logging.error(f"Error placing orders: {str(e)}")
                         raise
 
                 # If position is Short Spread
                 if df['in_position'].iloc[-1] == 0 and df['in_position'].iloc[-2] == -1:
-                    logger.info('Close Short Spread')
+                    logging.info('Close Short Spread')
                     current_spread = 'closed'
-                    logger.info(f'{symbol_1} amount to buy {symbol_1_balance}')
-                    logger.info(f'{symbol_2} amount to sell {symbol_2_balance}')
+                    logging.info(f'{symbol_1} amount to buy {symbol_1_balance}')
+                    logging.info(f'{symbol_2} amount to sell {symbol_2_balance}')
 
                     try:
                         # # Close short spread positions
-                        logger.info('Create order to close Short Spread')                   
+                        logging.info('Create order to close Short Spread')                   
                         order_1 = client.new_order(symbol=symbol_1, side='BUY', type='MARKET', quantity= symbol_1_balance, positionSide= 'SHORT')
+                        logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
                         order_2 = client.new_order(symbol=symbol_2, side='SELL', type='MARKET', quantity= symbol_2_balance, positionSide= 'LONG')
+                        logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
 
                         order_1_data= {
                             'order_id': order_1['orderId'],
@@ -614,62 +617,62 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                             connection.commit()
 
                     except ClientError as e:
-                        logger.error(f"Error placing orders: {str(e)}")
+                        logging.error(f"Error placing orders: {str(e)}")
                         raise
 
-        logger.info(f'Executing new positions loop...')
+        logging.info(f'Executing new positions loop...')
         # ---------------
         # Long Spread
         #----------------
         if df['in_position'].iloc[-1] == 1 and df['in_position'].iloc[-2] == 0:
         # if df['in_position'].iloc[-1] == 1:FOR TESTING out of sequence
             current_spread = 'long'
-            logger.info(f'Required position = Long Spread')
-            logger.info('Placing new long spread orders')
+            logging.info(f'Required position = Long Spread')
+            logging.info('Placing new long spread orders')
 
             try:
                 # Place orders to open long spread
-                logger.info(f'{symbol_1} price: {symbol_1_price} | {symbol_2} price: {symbol_2_price}')
+                logging.info(f'{symbol_1} price: {symbol_1_price} | {symbol_2} price: {symbol_2_price}')
 
-                logger.info(f'Placing BUY order | {symbol_1_target_quantity} {symbol_1}')
+                logging.info(f'Placing BUY order | {symbol_1_target_quantity} {symbol_1}')
                 try:
                     order_1 = client.new_order(symbol=symbol_1, side='BUY', type='MARKET', quantity=symbol_1_target_quantity, positionSide='LONG')
-                    logger.info(f'Order 1 Completed: {order_1}')  # Logging the order details
+                    logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
 
                     # Extract specific details from the order response and log them individually
                     order_id = order_1.get('orderId')
                     status = order_1.get('status')
                     
                     if order_id == 0:
-                        logger.error(f'Order 1 ID is 0 should not execute order 2')
+                        logging.error(f'Order 1 ID is 0 should not execute order 2')
 
                     # Log individual order details
-                    logger.info(f'Order 1 ID: {order_id}')
-                    logger.info(f'Order 1 Status: {status}')
+                    logging.info(f'Order 1 ID: {order_id}')
+                    logging.info(f'Order 1 Status: {status}')
                     # Log other relevant order details similarly
 
                 except ClientError as e:
-                    logger.error(f"Error placing order_1: {str(e)}")
+                    logging.error(f"Error placing order_1: {str(e)}")
 
-                logger.info(f'Placing SELL order | {symbol_2_target_quantity} {symbol_2} ')
+                logging.info(f'Placing SELL order | {symbol_2_target_quantity} {symbol_2} ')
                 try:
                     order_2 = client.new_order(symbol=symbol_2, side='SELL', type='MARKET', quantity=symbol_2_target_quantity, positionSide='SHORT')
-                    logger.info(f'Order 2 Completed: {order_2}')  # Logging the order details
+                    logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
 
                     # Extract specific details from the order response and log them individually
                     order_id = order_2.get('orderId')
                     status = order_2.get('status')
 
                     if order_id == 0:
-                        logger.error(f'Order 2 ID is 0 Need to reverse Order 1')
+                        logging.error(f'Order 2 ID is 0 Need to reverse Order 1')
                         # TODO reverse order 1 code
 
                     # Log individual order details
-                    logger.info(f'Order 2 ID: {order_id}')
-                    logger.info(f'Order 2 Status: {status}')
+                    logging.info(f'Order 2 ID: {order_id}')
+                    logging.info(f'Order 2 Status: {status}')
 
                 except ClientError as e:
-                    logger.error(f"Error placing order 2: {str(e)}")
+                    logging.error(f"Error placing order 2: {str(e)}")
 
                 order_1_data= {
                     'order_id': order_1['orderId'],
@@ -797,7 +800,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                     connection.commit()
 
             except ClientError as e:
-                logger.error(f"Error placing orders: {str(e)}")
+                logging.error(f"Error placing orders: {str(e)}")
 
         # ---------------
         # Short Spread
@@ -805,51 +808,51 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         if df['in_position'].iloc[-1] == -1 and df['in_position'].iloc[-2] == 0:
         # if df['in_position'].iloc[-1] == -1: FOR TESTING out of sequence
             current_spread = 'short'
-            logger.info(f'Required position = Short Spread')
-            logger.info('Placing new short spread orders')
+            logging.info(f'Required position = Short Spread')
+            logging.info('Placing new short spread orders')
 
             try:
                 # Place orders to open short spread
-                logger.info(f'{symbol_1} price: {symbol_1_price} | {symbol_2} price: {symbol_2_price}')
+                logging.info(f'{symbol_1} price: {symbol_1_price} | {symbol_2} price: {symbol_2_price}')
 
-                logger.info(f'Placing SELL order | {symbol_1_target_quantity} {symbol_1}')
+                logging.info(f'Placing SELL order | {symbol_1_target_quantity} {symbol_1}')
                 try:
                     order_1 = client.new_order(symbol=symbol_1, side='SELL', type='MARKET', quantity= symbol_1_target_quantity, positionSide= 'SHORT')
-                    logger.info(f'Order 1 Completed: {order_1}')  # Logging the order details
+                    logging.info(f'Order 1 Completed: {order_1}')  # Logging the order details
                     
                     # Extract specific details from the order response and log them individually
                     order_id = order_1.get('orderId')
                     status = order_1.get('status')
                     
                     if order_id == 0:
-                        logger.error(f'Order 1 ID is 0 should not execute order 2')
+                        logging.error(f'Order 1 ID is 0 should not execute order 2')
 
                     # Log individual order details
-                    logger.info(f'Order 1 ID: {order_id}')
-                    logger.info(f'Order 1 Status: {status}')
+                    logging.info(f'Order 1 ID: {order_id}')
+                    logging.info(f'Order 1 Status: {status}')
                     # Log other relevant order details similarly
 
                 except ClientError as e:
-                    logger.error(f"Error placing order_1: {str(e)}")
+                    logging.error(f"Error placing order_1: {str(e)}")
 
-                logger.info(f'Placing BUY order | {symbol_2_target_quantity} {symbol_2} ')
+                logging.info(f'Placing BUY order | {symbol_2_target_quantity} {symbol_2} ')
                 try:
                     order_2 = client.new_order(symbol=symbol_2, side='BUY', type='MARKET', quantity= symbol_2_target_quantity, positionSide= 'LONG')
-                    logger.info(f'Order 2 Completed: {order_2}')  # Logging the order details
+                    logging.info(f'Order 2 Completed: {order_2}')  # Logging the order details
                     
                     # Extract specific details from the order response and log them individually
                     order_id = order_2.get('orderId')
                     status = order_2.get('status')
 
                     if order_id == 0:
-                        logger.error(f'Order 2 ID is 0 Need to reverse Order 1')
+                        logging.error(f'Order 2 ID is 0 Need to reverse Order 1')
                         # TODO reverse order 1 code
 
                     # Log individual order details
-                    logger.info(f'Order 2 ID: {order_id}')
-                    logger.info(f'Order 2 Status: {status}')
+                    logging.info(f'Order 2 ID: {order_id}')
+                    logging.info(f'Order 2 Status: {status}')
                 except ClientError as e:
-                    logger.error(f'Order 2 error: {e}')
+                    logging.error(f'Order 2 error: {e}')
 
                 order_1_data= {
                     'order_id': order_1['orderId'],
@@ -977,15 +980,15 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
                     connection.commit()
 
             except ClientError as e:
-                logger.error(f"Error placing orders: {str(e)}")
+                logging.error(f"Error placing orders: {str(e)}")
         # else:
-        #     logger.info(f'Order value = 0 OR < min_notional value ...')
-        logger.info('End of trade executions')
+        #     logging.info(f'Order value = 0 OR < min_notional value ...')
+        logging.info('End of trade executions')
     # # %%
     #     # --------------------
     #     # Pair data collection
     #     # --------------------
-    #     logger.info(f'Collecting data for pair: {pair_1}-{pair_2}')
+    #     logging.info(f'Collecting data for pair: {pair_1}-{pair_2}')
 
     #     # Calculate the combined positions for the pair
     #     positions = np.array(long_spread) + np.array(short_spread)
@@ -1027,7 +1030,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     #         sharperatio = np.sqrt(252) * df['pnl'][1:].mean() / df['pnl'][1:].std()
     #     else:
     #         sharperatio = np.nan
-    #         logger.info(f'No trade setups for {(pair_1).lower()}-{(pair_2).lower()}')
+    #         logging.info(f'No trade setups for {(pair_1).lower()}-{(pair_2).lower()}')
 
     #     # Calculate training and test data stats
     #     total_pnl = df['cumulative_pnl'].iloc[-1]
@@ -1049,7 +1052,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     # # ------------------------
     # # Monthly Data Collection 
     # # ------------------------
-    # logger.info(f'End of pairs loop, compiling monthly data...')
+    # logging.info(f'End of pairs loop, compiling monthly data...')
 
     # # Create a DataFrame from the results list
     # backtest_stats = pd.DataFrame(backtest_stats, columns=[
@@ -1088,7 +1091,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     # #         connection.execute(insert_query, data_to_insert)
     # #         connection.commit()
     # # except SQLAlchemyError as e:
-    # #     logger.info(e)
+    # #     logging.info(e)
 
 
     # # Concatenate DataFrames in the dictionary vertically to create the final DataFrame
@@ -1116,11 +1119,11 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     #         connection.execute(insert_pnl_query, data_to_insert)
     #         connection.commit()
     # except SQLAlchemyError as e:
-    #     logger.error(e)
+    #     logging.error(e)
 
     # # Create a DataFrame from the results list and sort by best sharpe ratios
     # current_results_df = backtest_stats.sort_values('sharperatio', ascending=False)
-    # logger.info(f'{current_results_df}')
+    # logging.info(f'{current_results_df}')
 
 
     # '''TODO The code below should be used in an explorer notebook to explore the results and visualise'''
