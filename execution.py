@@ -34,6 +34,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         
     ### DATA PREPERATION
     # Select the month start and end that the strategy is running
+    # TODO can edit this to use client time to establish month and then update these dynamically
     insample_start = datetime(2024, 1, 26)
     insample_end = datetime(2024, 2, 25)
 
@@ -86,7 +87,7 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
     # Define the rolling window period
     rolling_window_size = 20
 
-    # Iterate through each pair in the 'backtest_pairs' DataFrame
+    # Iterate through each pair in the 'trading_pairs' DataFrame
     for index, row in trading_pairs.iterrows():
         # Extract symbols for the pair
         pair_1 = row['symbol_1']
@@ -101,12 +102,12 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         symbol_1_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_1')
         symbol_2_id_query = text('SELECT id FROM asset WHERE symbol = :symbol_2')
 
-        with engine.connect() as connection:
-            symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
-            symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
+        # with engine.connect() as connection:
+        #     symbol_1_id_result = connection.execute(symbol_1_id_query, {'symbol_1': symbol_1}).fetchone()
+        #     symbol_2_id_result = connection.execute(symbol_2_id_query, {'symbol_2': symbol_2}).fetchone()
 
-        symbol_1_id = symbol_1_id_result[0] 
-        symbol_2_id = symbol_2_id_result[0]
+        # symbol_1_id = symbol_1_id_result[0] 
+        # symbol_2_id = symbol_2_id_result[0]
 
         pair_data_query = text(f'''
             SELECT
@@ -214,8 +215,8 @@ def execution_model(binance_api: str, binance_secret: str, connection_string):
         to be handled by getting the symbol price and then converting to USD
         '''
         # set parameters
-        total_allocation = position_size
-        symbol_allocation = total_allocation / 2
+        # total_allocation = position_size
+        symbol_allocation = position_size / 2
         symbol_alloction_threshold = symbol_allocation * 1.15 # set to 15% based on log check that max excess above allocations was around 11.10
         symbol_alloction_threshold = Decimal(symbol_alloction_threshold).quantize(Decimal('0.00'), rounding=ROUND_HALF_EVEN)
 
