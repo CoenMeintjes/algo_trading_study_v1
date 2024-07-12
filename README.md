@@ -1,4 +1,4 @@
-# README for Trading Algorithm Backtest Script
+# Statistical Arbitrage Strategy version 1
 
 ## Overview
 
