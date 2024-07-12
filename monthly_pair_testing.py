@@ -27,8 +27,8 @@ logger.add('logs/2_pair_testing.log', rotation= '5 MB')
 # Assuming df is your DataFrame with columns 'price' and 'volume'
 scaler = MinMaxScaler()
 
-start_date = datetime(2023, 12, 25)
-end_date = datetime(2024, 1, 25)
+start_date = datetime(2022, 1, 25)
+end_date = datetime(2023, 1, 25)
 
 date_ranges = []
 
@@ -423,81 +423,59 @@ for start, end in date_ranges:
         else:
             logger.info('Record exists. Skipping.')
 
-
-# %%
-# ----------------------
-# Populate Azure DB
-# ----------------------
-
-# Query data from local databases
-# coint_query = text('''
-#     SELECT * FROM coint_test_results;
-# ''')
-
-# adf_query = text('''
-#     SELECT * FROM adf_test_results;
-# ''')
-
-asset_query = text('''
-    SELECT * FROM asset;
-''')
-
-asset_price_query = text('''
-    SELECT * FROM asset_price
-    WHERE open_time > '2023-12-1';
-''')
-
-trading_pairs_query = text('''
-    SELECT * FROM trading_pairs
-    WHERE trainset_end = :trainset_end;
-''')
-
-# # Create dfs for each table
-# coint_data = pd.read_sql(con= engine, sql=coint_query)
-# logger.info(f'No. of rows in coint_test_results | {len(coint_data)}')
-
-# adf_data = pd.read_sql(con= engine, sql=adf_query)
-# logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
-
-asset_data = pd.read_sql(con= engine, sql=asset_query)
-logger.info(f'No. of rows in asset | {len(asset_data)}')
-
-asset_price_data = pd.read_sql(con= engine, sql=asset_price_query)
-logger.info(f'No. of rows in asset_price | {len(asset_price_data)}')
-
-trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query, params={'trainset_end': end_date})
-logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
-
-# insert data into production database table
-# Define the tables and corresponding DataFrames
-tables_dataframes = [
-    # ('coint_test_results', coint_data),
-    # ('adf_test_results', adf_data),
-    ('asset', asset_data),
-    ('asset_price', asset_price_data),
-    ('trading_pairs', trading_pairs_data)
-]
-
-for table_name, dataframe in tables_dataframes:
-    try:
-        dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
-    except SQLAlchemyError as e:
-        logger.error(f'Error inserting data into table {table_name}: {e}')
-        continue
-
+'''select all below and uncomment at same time for cloud DB population'''
 # # %%
-# orders_query = text('''
-#     SELECT * FROM orders;
+# # ----------------------
+# # Populate Azure DB
+# # ----------------------
+
+# # Query data from local databases
+# # coint_query = text('''
+# #     SELECT * FROM coint_test_results;
+# # ''')
+
+# # adf_query = text('''
+# #     SELECT * FROM adf_test_results;
+# # ''')
+
+# asset_query = text('''
+#     SELECT * FROM asset;
 # ''')
 
-# # Create dfs for each table
-# order_data = pd.read_sql(con= engine, sql=orders_query)
-# logger.info(f'No. of rows in orders | {len(order_data)}')
+# asset_price_query = text('''
+#     SELECT * FROM asset_price
+#     WHERE open_time > '2023-12-1';
+# ''')
+
+# trading_pairs_query = text('''
+#     SELECT * FROM trading_pairs
+#     WHERE trainset_end = :trainset_end;
+# ''')
+
+# # # Create dfs for each table
+# # coint_data = pd.read_sql(con= engine, sql=coint_query)
+# # logger.info(f'No. of rows in coint_test_results | {len(coint_data)}')
+
+# # adf_data = pd.read_sql(con= engine, sql=adf_query)
+# # logger.info(f'No. of rows in adf_test_results | {len(adf_data)}')
+
+# asset_data = pd.read_sql(con= engine, sql=asset_query)
+# logger.info(f'No. of rows in asset | {len(asset_data)}')
+
+# asset_price_data = pd.read_sql(con= engine, sql=asset_price_query)
+# logger.info(f'No. of rows in asset_price | {len(asset_price_data)}')
+
+# trading_pairs_data = pd.read_sql(con= engine, sql=trading_pairs_query, params={'trainset_end': end_date})
+# logger.info(f'No. of rows in trading_pairs | {len(trading_pairs_data)}')
 
 # # insert data into production database table
 # # Define the tables and corresponding DataFrames
 # tables_dataframes = [
-#     ('orders', order_data)
+#     # ('coint_test_results', coint_data),
+#     # ('adf_test_results', adf_data),
+#     ('asset', asset_data),
+#     ('asset_price', asset_price_data),
+#     ('trading_pairs', trading_pairs_data)
 # ]
 
 # for table_name, dataframe in tables_dataframes:
@@ -506,4 +484,26 @@ for table_name, dataframe in tables_dataframes:
 #     except SQLAlchemyError as e:
 #         logger.error(f'Error inserting data into table {table_name}: {e}')
 #         continue
-# %%
+
+# # # %%
+# # orders_query = text('''
+# #     SELECT * FROM orders;
+# # ''')
+
+# # # Create dfs for each table
+# # order_data = pd.read_sql(con= engine, sql=orders_query)
+# # logger.info(f'No. of rows in orders | {len(order_data)}')
+
+# # # insert data into production database table
+# # # Define the tables and corresponding DataFrames
+# # tables_dataframes = [
+# #     ('orders', order_data)
+# # ]
+
+# # for table_name, dataframe in tables_dataframes:
+# #     try:
+# #         dataframe.to_sql(table_name, prod_engine, if_exists='append', index=False, method='multi')
+# #     except SQLAlchemyError as e:
+# #         logger.error(f'Error inserting data into table {table_name}: {e}')
+# #         continue
+# # %%
